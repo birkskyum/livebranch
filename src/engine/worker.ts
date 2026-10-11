@@ -236,7 +236,8 @@ const calls: {[K in keyof EngineCalls]: (...args: Parameters<EngineCalls[K]>) =>
     async files(): Promise<FileEntry[]> {
         if (!project) return [];
         const {vfs} = project;
-        return vfs.paths().map(path => ({path, loaded: vfs.files.has(path)}));
+        // The declarations that the type check installs are not the project's own files.
+        return vfs.paths().filter(path => !path.startsWith('/node_modules/')).map(path => ({path, loaded: vfs.files.has(path)}));
     },
 
     async read(path: string): Promise<string | undefined> {
