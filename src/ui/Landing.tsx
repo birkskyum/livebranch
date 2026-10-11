@@ -61,6 +61,11 @@ export function Landing() {
                 Try <a class="text-blue-600 underline dark:text-blue-400" href="#gh=maplibre/maplibre-gl-js@main">maplibre/maplibre-gl-js@main</a>,
                 built from source in this tab.
             </p>
+            <p class="text-neutral-600 dark:text-neutral-400">
+                Put <code class="font-mono">livebranch.dev/</code> in front of any GitHub URL of a branch, a pull request or an example
+                file to open it here. The <a class="text-blue-600 underline dark:text-blue-400" href="./llms.txt">guide</a> has the
+                link format and the API, for people and for agents.
+            </p>
         </main>
     );
 }

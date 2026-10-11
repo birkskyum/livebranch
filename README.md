@@ -111,17 +111,21 @@ under Node, so `check` of a project that needs them wants a directory where they
 ## Worker and HTTP API
 
 The engine does not depend on the browser, so `worker/index.ts` also runs it in a Worker. The
-Worker serves the static app and answers `/api/check`, which compiles and type checks a project and
-returns its problems as JSON. It takes the parameters of a link as a query string, or a JSON body.
+Worker serves the static app and an API, which `public/llms.txt` describes for the people and the
+agents that use the site.
 
-```sh
-curl 'https://<host>/api/check?gh=owner/repo@ref&code=...'
-curl -X POST https://<host>/api/check -d '{"files": {"index.html": "<script type=\"module\">const n: number = \"x\";</script>"}}'
-```
+- `POST /api/link` makes a link from a source and files, so that a caller does not have to encode
+  the `code` parameter.
+- `POST /api/check` compiles and type checks without a browser and returns the problems as JSON.
+- A GitHub address as the path redirects to its link (see above).
 
 `wrangler.jsonc` describes the Worker. `pnpm exec wrangler dev` runs it in a local workerd, and
-`wrangler deploy` puts it on Cloudflare. The same config is what celld reads for self-hosting,
-which has not been tried here. A `GITHUB_TOKEN` secret lifts GitHub's limit of 60 requests an hour.
+`wrangler deploy` puts it on livebranch.dev. The same config is what celld reads for self-hosting,
+which has not been tried here.
+
+The Worker has no GitHub token of its own. Cloudflare's addresses share GitHub's anonymous limit, so
+a caller sends a token of their own to read from GitHub, and the Worker passes it on. One address
+gets 30 API requests a minute.
 
 Setup commands do not run in the Worker or under Node yet. A project that has them is still
 checked, but problems are then reported only for the page and the link's files.

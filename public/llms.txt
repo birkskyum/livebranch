@@ -1,0 +1,103 @@
+# livebranch
+
+> livebranch.dev runs a TypeScript project in the browser, straight from a GitHub branch, pull request or commit. The TypeScript compiler (tsc-rs, as WebAssembly) compiles the sources in the visitor's tab, so there is no server build, no account and nothing to install. A link holds everything.
+
+Use it to show someone a running branch or pull request of a TypeScript library, with a demo, and to compare it with another ref side by side.
+
+## Open something
+
+Put `https://livebranch.dev/` in front of a GitHub URL of a repository, a branch, a pull request, a commit or a file:
+
+- `https://livebranch.dev/github.com/maplibre/maplibre-gl-js/pull/8628`
+- `https://livebranch.dev/github.com/owner/repo/blob/branch/examples/page.html` opens that page of that branch.
+
+The same as link parameters: `https://livebranch.dev/#gh=owner/repo@ref`.
+
+## Link parameters
+
+They go in the URL fragment, joined by `&`.
+
+| Parameter | Meaning |
+| --- | --- |
+| `gh=owner/repo@ref` | The project. `ref` is a branch, a tag or a commit. `owner/repo@pull/123` is the head of a pull request, also one from a fork. |
+| `base=ref` | A second ref, shown next to the first and running the same demo. A ref of the same repository (`main`) or a full `owner/repo@ref`. |
+| `entry=path` | The page to open or the script to run. |
+| `code=...` | Files carried in the link. Make it with `POST /api/link`. |
+| `gist=id` | Files of a gist, laid over the project. `id@revision` pins it. |
+| `adapter=name` | Use a named adapter. `none` turns the lookup off. |
+| `view=result` | Show only the running page, without the editor. |
+
+A link that names a branch or a pull request shows its latest push. A link that names a full commit hash never changes.
+
+## Writing a demo
+
+A demo is either a page (`index.html`) or a script (`demo.ts`). Both may contain TypeScript. A script runs in a page made from the project's template.
+
+- Import the project by its package name. `import {thing} from 'package-name'` resolves to the project's `src/index.ts` at the ref of the link.
+- Imports of other npm packages load from esm.sh, at the version in the project's lockfile.
+- Relative imports between the files of the link work, with or without `.ts`.
+- The demo is type checked against the project at that ref. The errors show in the Problems tab.
+
+For maplibre-gl-js, a script demo gets a page with the stylesheet and a full-size `<div id="map">`:
+
+```ts
+import * as maplibregl from 'maplibre-gl';
+
+const map = new maplibregl.Map({container: 'map', style: 'https://demotiles.maplibre.org/style.json', center: [10, 50], zoom: 3});
+```
+
+maplibre-gl 6 has no default export, so import it as a namespace or by name.
+
+## API
+
+`https://livebranch.dev/api` lists the endpoints. They answer JSON and allow any origin. One address gets 30 requests a minute.
+
+### Make a link
+
+```sh
+curl -X POST https://livebranch.dev/api/link -H 'content-type: application/json' -d '{
+  "gh": "maplibre/maplibre-gl-js@pull/8628",
+  "base": "main",
+  "files": {"demo.ts": "import * as maplibregl from \"maplibre-gl\";\nnew maplibregl.Map({container: \"map\", style: \"https://demotiles.maplibre.org/style.json\"});\n"}
+}'
+```
+
+It answers `{"url": "https://livebranch.dev/#gh=...&base=main&code=..."}`. The body takes `gh`, `base`, `entry`, `gist`, `adapter`, `files` (name to text), `result` (true for `view=result`) and `pin` (true to turn a branch or pull request into its commit, which reads from GitHub).
+
+### Check without a browser
+
+```sh
+curl -X POST https://livebranch.dev/api/check -H 'content-type: application/json' -d '{
+  "files": {"index.html": "<script type=\"module\">const n: number = \"x\";</script>"}
+}'
+```
+
+It compiles and type checks, and answers `{"problems": [{"file", "line", "column", "code", "category", "text"}], "modules", "entry", "skippedSetup"}`. It takes the same body as `/api/link`.
+
+Two limits apply to checks on the server:
+
+- Reading from GitHub needs a token. The server shares GitHub's anonymous limit with many others, so send one of your own as `Authorization: Bearer <token>`. A token without any permission is enough for public repositories. It is passed on to api.github.com only and is not kept. Checks of files sent in the body need none.
+- Setup commands of a project (code generators) do not run on the server. For such a project (`skippedSetup` is not empty) only problems in the demo's own files are reported. A browser runs the setup and gives the full result.
+
+## Reading the result in a browser
+
+Any headless browser can open a link. The page says how it went:
+
+- `document.documentElement.dataset.livebranch` is `loading`, `ready` or `failed`.
+- `window.__livebranch.state.session` has `problems` (from the compile), `steps`, `url` (the running page) and `label`.
+- `window.__livebranch.state.typeProblems` has the type errors. They are final when `state.checking` is false.
+- `window.__livebranch.state.console` has what the page logged, and its uncaught errors.
+- `window.__livebranch.exec('grep -rn foo src')` runs a shell command over the project's files (bash, with `tsc` and `node`).
+- `window.__livebranch.edit('/demo.ts', text)` changes a file and rebuilds. `window.__livebranch.link()` returns the link with the edits in it.
+
+## Which projects work
+
+- A plain TypeScript or TSX library with a `src/index.ts` works with no config.
+- A project with build steps says how it runs in a `livebranch.json`, at its root or in `.github`. A project without one gets its adapter, which is the same file kept at https://github.com/birkskyum/livebranch-adapters under the name of its npm package. That repository documents the fields.
+- A project that needs a bundler plugin or a framework compiler (Vue, Svelte, Solid JSX) does not work.
+
+## Limits
+
+- The repository has to be public.
+- What runs is the source of the ref, compiled file by file. It is not the project's own bundle, so it does not show bundle size, bundler behaviour or load performance.
+- An anonymous visitor gets 60 GitHub API requests an hour. A build uses one or two.
