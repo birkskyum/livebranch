@@ -49,6 +49,13 @@ import of the project's own package name resolves to `src/index.ts`.
 A build is kept in the browser by a hash of its inputs. Opening the same link again takes a few
 milliseconds. The first build of a maplibre-gl-js commit takes about four seconds.
 
+## From a GitHub address
+
+On the deployed Worker, a GitHub address also works as a path. Put the site's address in front of
+any GitHub URL of a repository, a branch, a pull request, a commit or an example file, or swap
+`github.com` for it. `livebranch.dev/github.com/maplibre/maplibre-gl-js/pull/8628` and
+`livebranch.dev/maplibre/maplibre-gl-js/pull/8628` both open that pull request.
+
 ## Project config
 
 A project can have a `livebranch.json` at its root. Projects that cannot carry one get a preset by the

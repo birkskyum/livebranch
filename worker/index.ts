@@ -4,7 +4,7 @@
 import tscModule from '../public/tsc/ts_rust.wasm';
 import {checkProject} from '../src/engine/check.ts';
 import {openProject, type Env as EngineEnv} from '../src/engine/project.ts';
-import {decodeSpec, isEmptySpec, type LinkSpec} from '../src/engine/spec.ts';
+import {decodeSpec, isEmptySpec, normalizeGithubSource, type LinkSpec} from '../src/engine/spec.ts';
 
 interface Env {
     ASSETS: {fetch(request: Request): Promise<Response>};
@@ -40,10 +40,34 @@ async function check(spec: LinkSpec, env: Env, origin: string): Promise<Response
     return json(await checkProject(await openProject(spec, engine), engine));
 }
 
+const OWN_PATHS = /^(?:assets|tsc|rt|api|cdn-cgi)$/;
+
+/**
+ * The app link for a GitHub address in the path. People get there by putting this site's address
+ * in front of a GitHub URL, or by swapping `github.com` for it: `/github.com/owner/repo/pull/1`,
+ * `/https://github.com/owner/repo/tree/branch` and `/owner/repo/pull/1` all work.
+ */
+export function linkForPath(pathname: string): string | undefined {
+    let path: string;
+    try {
+        path = decodeURIComponent(pathname.slice(1));
+    } catch {
+        return undefined;
+    }
+    path = path.replace(/^https?:\/+/, '').replace(/^(?:www\.)?github\.com\//, '');
+    const match = /^([A-Za-z0-9-]+)\/[\w.-]+(?:\/|$)/.exec(path);
+    if (!match || OWN_PATHS.test(match[1])) return undefined;
+    const {gh, entry} = normalizeGithubSource(`https://github.com/${path}`);
+    return `/#gh=${gh}${entry ? `&entry=${entry}` : ''}`;
+}
+
 export default {
     async fetch(request: Request, env: Env): Promise<Response> {
         const url = new URL(request.url);
-        if (url.pathname !== '/api/check') return env.ASSETS.fetch(request);
+        if (url.pathname !== '/api/check') {
+            const link = request.method === 'GET' ? linkForPath(url.pathname) : undefined;
+            return link ? Response.redirect(url.origin + link, 302) : env.ASSETS.fetch(request);
+        }
         try {
             if (request.method === 'GET') return await check(await decodeSpec(url.search, ''), env, url.origin);
             if (request.method !== 'POST') return json({error: 'Use GET or POST.'}, 405);
