@@ -42,7 +42,7 @@ test('rewrites static, dynamic and computed imports', async () => {
         'import fs from \'https://app.test/rt/node/fs.js\';',
         'export * from \'https://example.com/x.js\';',
         'const lazy = import("./a.ts");',
-        'const computed = (globalThis.__reproImport ? globalThis.__reproImport(`pkg/${name}.mjs`, import.meta.url) : import(`pkg/${name}.mjs`));',
+        'const computed = (globalThis.__livebranchImport ? globalThis.__livebranchImport(`pkg/${name}.mjs`, import.meta.url) : import(`pkg/${name}.mjs`));',
         'const meta = import.meta.url;',
     ]);
     assert.deepEqual(assets.map(asset => `${asset.path} ${asset.kind}`), ['/src/style.css css', '/src/logo.svg url', '/src/logo.svg raw']);

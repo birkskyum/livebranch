@@ -1,5 +1,5 @@
 /** What a share link says: where the project comes from and what to run. */
-export interface ReproSpec {
+export interface LinkSpec {
     /** A GitHub source, `owner/repo@ref` or `owner/repo@ref/sub/dir`. */
     gh?: string;
     /** A gist id, optionally `id@revision`. Its files are laid over the GitHub source. */
@@ -12,8 +12,8 @@ export interface ReproSpec {
     preset?: string;
 }
 
-/** `repro.json` at the project root, or a preset. */
-export interface ReproConfig {
+/** `livebranch.json` at the project root, or a preset. */
+export interface ProjectConfig {
     /** The HTML page to open, `index.html` by default. */
     entry?: string;
     /** Shell commands that run before the build, for example code generators. */
@@ -122,7 +122,7 @@ export async function decodeFiles(code: string): Promise<Record<string, string>>
 }
 
 /** The link parameters of a spec, for the fragment of the app URL. */
-export async function encodeSpec(spec: ReproSpec): Promise<string> {
+export async function encodeSpec(spec: LinkSpec): Promise<string> {
     const params = new URLSearchParams();
     for (const key of PARAMS) {
         const value = spec[key];
@@ -133,10 +133,10 @@ export async function encodeSpec(spec: ReproSpec): Promise<string> {
 }
 
 /** Reads a spec from the query string and the fragment of a URL. The fragment wins. */
-export async function decodeSpec(search: string, hash: string): Promise<ReproSpec> {
+export async function decodeSpec(search: string, hash: string): Promise<LinkSpec> {
     const params = new URLSearchParams(search);
     for (const [key, value] of new URLSearchParams(hash.replace(/^#/, ''))) params.set(key, value);
-    const spec: ReproSpec = {};
+    const spec: LinkSpec = {};
     for (const key of PARAMS) {
         const value = params.get(key);
         if (value) spec[key] = value;
@@ -151,6 +151,6 @@ export async function decodeSpec(search: string, hash: string): Promise<ReproSpe
     return spec;
 }
 
-export function isEmptySpec(spec: ReproSpec): boolean {
+export function isEmptySpec(spec: LinkSpec): boolean {
     return !spec.gh && !spec.gist && !(spec.files && Object.keys(spec.files).length);
 }

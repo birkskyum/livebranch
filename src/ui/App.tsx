@@ -6,7 +6,7 @@ import {edit, getEngine, openFromLocation, shareLink, state} from './store.ts';
 declare global {
     interface Window {
         /** For agents and tests that drive the page: the app's state and the project shell. */
-        __repro: {
+        __livebranch: {
             state: typeof state;
             exec(command: string): Promise<{stdout: string; stderr: string; exitCode: number}>;
             edit(path: string, text: string): void;
@@ -17,14 +17,14 @@ declare global {
 
 export function App() {
     onMount(() => {
-        window.__repro = {state, exec: command => getEngine().exec(command), edit, link: resultOnly => shareLink(resultOnly ?? false)};
+        window.__livebranch = {state, exec: command => getEngine().exec(command), edit, link: resultOnly => shareLink(resultOnly ?? false)};
         void openFromLocation();
         const reopen = () => void openFromLocation();
         window.addEventListener('hashchange', reopen);
         onCleanup(() => window.removeEventListener('hashchange', reopen));
     });
     createEffect(() => {
-        document.documentElement.dataset.repro = state.phase;
+        document.documentElement.dataset.livebranch = state.phase;
     });
 
     return (

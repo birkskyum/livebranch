@@ -41,7 +41,7 @@ function Header() {
     };
     return (
         <header class="flex h-10 shrink-0 items-center gap-3 border-b border-neutral-200 px-3 dark:border-neutral-800">
-            <a class="font-semibold" href="#">tscrs repro</a>
+            <a class="font-semibold" href="#">livebranch</a>
             <Show when={state.session}>
                 {session => (
                     <Show when={commitUrl()} fallback={<span class="font-mono text-xs">{session().label}</span>}>
@@ -159,7 +159,7 @@ function BottomPanel() {
 function Failure() {
     return (
         <div class="flex h-full flex-col items-start gap-3 p-6">
-            <h2 class="text-lg font-semibold">The repro could not be opened</h2>
+            <h2 class="text-lg font-semibold">This link could not be opened</h2>
             <pre class="whitespace-pre-wrap font-mono text-xs text-red-600 dark:text-red-400">{state.error}</pre>
             <a class="text-blue-600 underline dark:text-blue-400" href="#">Start over</a>
         </div>
@@ -185,7 +185,7 @@ export function Workbench() {
     );
 }
 
-/** The built page alone. A small link opens the workbench for the same repro. */
+/** The built page alone. A small link opens the workbench for the same link. */
 function ResultOnly() {
     const full = () => `#${location.hash.slice(1).replace(/(^|&)view=result(&|$)/, '$1').replace(/&$/, '')}`;
     const errors = () => allProblems().filter(problem => problem.category === 'error').length;
@@ -197,7 +197,7 @@ function ResultOnly() {
                 href={full()}
                 data-testid="status"
             >
-                <Switch fallback="tscrs repro">
+                <Switch fallback="livebranch">
                     <Match when={state.phase === 'loading'}>{state.step || 'building'}…</Match>
                     <Match when={errors()}>{errors()} {errors() === 1 ? 'error' : 'errors'}</Match>
                 </Switch>

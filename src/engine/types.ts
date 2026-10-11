@@ -4,7 +4,7 @@ import {parseJsonc} from './project.ts';
 import {isSourcePath} from './resolve.ts';
 import {tsc} from './tsc.ts';
 
-const TSCONFIG = '/.repro/tsconfig.check.json';
+const TSCONFIG = '/.livebranch/tsconfig.check.json';
 const DECLARATION = /(?:\.d\.[cm]?ts|(?:^|\/)package\.json)$/;
 /** Cannot find module, and no declaration file for module: the answer when a package's types are not installed. */
 const MISSING_MODULE = new Set([2307, 7016, 2792]);

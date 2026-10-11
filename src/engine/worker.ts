@@ -4,7 +4,7 @@ import {fetchPrebuilt} from './prebuilt.ts';
 import {hash, openProject, type Env, type Project, type ScriptIo, type ScriptRequest, type ScriptResult} from './project.ts';
 import type {EngineCalls, FileEntry, OpenOptions, Reply, Request, SessionInfo, Step} from './protocol.ts';
 import type {Shell} from './shell.ts';
-import type {ReproSpec} from './spec.ts';
+import type {LinkSpec} from './spec.ts';
 import type {WasmModule} from './tsc.ts';
 import {isBinaryPath} from './vfs.ts';
 
@@ -25,12 +25,12 @@ let edits: Record<string, string> = {};
 let shell: Shell | undefined;
 let wasm: Promise<WasmModule> | undefined;
 
-const buildCache = (id: string) => `repro-build-${id}`;
+const buildCache = (id: string) => `livebranch-build-${id}`;
 
 /** GitHub's file list of a commit never changes, and the anonymous API allows few requests, so it is kept. */
 async function cachedFetch(url: string, init?: RequestInit): Promise<Response> {
     if (!/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+\/git\/trees\/[0-9a-f]{40}\?/.test(url)) return fetch(url, init);
-    const cache = await caches.open('repro-github');
+    const cache = await caches.open('livebranch-github');
     const hit = await cache.match(url);
     if (hit) return hit;
     const response = await fetch(url, init);
@@ -79,7 +79,7 @@ function createEnv(base: string): Env {
 
 /** Records the build as the most recent one and deletes the builds beyond the kept number. */
 async function touch(id: string): Promise<void> {
-    const index = await caches.open('repro-index');
+    const index = await caches.open('livebranch-index');
     const stored = await index.match('/builds');
     const ids: string[] = [id, ...(stored ? await stored.json() as string[] : []).filter(other => other !== id)];
     await Promise.all(ids.slice(KEPT_BUILDS).map(old => caches.delete(buildCache(old))));
@@ -87,7 +87,7 @@ async function touch(id: string): Promise<void> {
 }
 
 async function getShell(): Promise<Shell> {
-    if (!project || !env) throw new Error('No repro is open.');
+    if (!project || !env) throw new Error('No project is open.');
     shell ??= (await import('./shell.ts')).createShell(project, env);
     return shell;
 }
@@ -175,7 +175,7 @@ function stepTimer(steps: Step[]) {
 }
 
 const calls: {[K in keyof EngineCalls]: (...args: Parameters<EngineCalls[K]>) => Promise<ReturnType<EngineCalls[K]>>} = {
-    async open(spec: ReproSpec, options: OpenOptions): Promise<SessionInfo> {
+    async open(spec: LinkSpec, options: OpenOptions): Promise<SessionInfo> {
         const steps: Step[] = [];
         const timed = stepTimer(steps);
         const start = performance.now();
@@ -204,7 +204,7 @@ const calls: {[K in keyof EngineCalls]: (...args: Parameters<EngineCalls[K]>) =>
     },
 
     async update(files: Record<string, string>): Promise<SessionInfo> {
-        if (!project || !opened) throw new Error('No repro is open.');
+        if (!project || !opened) throw new Error('No project is open.');
         const steps: Step[] = [];
         const start = performance.now();
         await prepare(steps);
@@ -216,7 +216,7 @@ const calls: {[K in keyof EngineCalls]: (...args: Parameters<EngineCalls[K]>) =>
     },
 
     async check(): Promise<Problem[]> {
-        if (!project || !opened) throw new Error('No repro is open.');
+        if (!project || !opened) throw new Error('No project is open.');
         const current = project;
         const cache = await caches.open(buildCache(current.id));
         const key = `${base}~p/${current.id}/__types__.json`;

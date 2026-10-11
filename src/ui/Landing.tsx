@@ -4,7 +4,7 @@ import {navigate} from './store.ts';
 
 const STARTER = `<!doctype html>
 <meta charset="utf-8">
-<title>Repro</title>
+<title>Page</title>
 <pre id="out"></pre>
 <script type="module">
 interface Point { x: number; y: number }
@@ -29,7 +29,7 @@ export function Landing() {
     return (
         <main class="mx-auto flex h-full max-w-2xl flex-col gap-6 overflow-auto px-6 py-12">
             <header class="flex flex-col gap-2">
-                <h1 class="text-2xl font-semibold tracking-tight">tscrs repro</h1>
+                <h1 class="text-2xl font-semibold tracking-tight">livebranch</h1>
                 <p class="text-neutral-600 dark:text-neutral-400">
                     Runs a TypeScript project in the browser. The TypeScript compiler (tsc-rs, as WebAssembly) compiles the
                     sources here, straight from a GitHub commit, and the page loads the result. A link holds everything, so

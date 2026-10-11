@@ -1,12 +1,12 @@
 {
-  "name": "tscrs-repro",
+  "name": "livebranch",
   "version": "0.0.1",
   "private": true,
   "author": "Birk Skyum",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "bin": {
-    "repro": "bin/repro.ts"
+    "livebranch": "bin/livebranch.ts"
   },
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,7 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "check:types": "tsc-rs --noEmit",
     "build:wasm": "scripts/build-wasm.sh",
-    "repro": "node bin/repro.ts"
+    "livebranch": "node bin/livebranch.ts"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",

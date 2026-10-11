@@ -65,7 +65,7 @@ export function rewriteModule(code: string, importer: string, ctx: ResolveContex
         if (record.specifier === undefined || (record.type === 'dynamic' && record.glob)) {
             // A specifier computed at run time. A script run resolves it (public/rt/node-runner.js).
             const expression = code.slice(record.start, record.end);
-            const text = `(globalThis.__reproImport ? globalThis.__reproImport(${expression}, import.meta.url) : import(${expression}))`;
+            const text = `(globalThis.__livebranchImport ? globalThis.__livebranchImport(${expression}, import.meta.url) : import(${expression}))`;
             edits.push({start: record.importStart, end: record.importEnd, text});
             continue;
         }

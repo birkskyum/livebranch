@@ -99,7 +99,7 @@ self.onmessage = async ({data}) => {
         const version = data.versions[name];
         return `https://esm.sh/${name}${version ? `@${version}` : ''}${specifier.slice(name.length)}`;
     };
-    self.__reproImport = (specifier, base) => track(import(locate(String(specifier), base)));
+    self.__livebranchImport = (specifier, base) => track(import(locate(String(specifier), base)));
 
     const fail = error => {
         if (error instanceof Exit || exitCode !== undefined) return;

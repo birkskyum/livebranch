@@ -10,7 +10,7 @@ export function Preview() {
 
     onMount(() => {
         const receive = (event: MessageEvent) => {
-            if (event.source !== frame?.contentWindow || event.data?.repro !== 'console') return;
+            if (event.source !== frame?.contentWindow || event.data?.livebranch !== 'console') return;
             const entry: ConsoleEntry = {level: event.data.level, text: (event.data.args as string[]).join(' ')};
             setState(produce(draft => {
                 draft.console.push(entry);

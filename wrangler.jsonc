@@ -2,7 +2,7 @@
 // (worker/index.ts), which is the engine behind an HTTP API.
 {
     "$schema": "./node_modules/wrangler/config-schema.json",
-    "name": "tscrs-repro",
+    "name": "livebranch",
     "compatibility_date": "2026-09-25",
     "main": "./worker/index.ts",
     "assets": {

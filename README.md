@@ -1,9 +1,9 @@
-# tscrs repro
+# livebranch
 
 A playground that runs a TypeScript project in the browser, straight from a GitHub commit. The
 TypeScript compiler itself ([tsc-rs](https://github.com/pingdotgg/ts-rust), compiled to WebAssembly)
 compiles the sources in the tab, and the page loads the result as native ES modules. There is no
-bundler, no container and no server. A link holds the whole repro.
+bundler, no container and no server. A link holds everything needed to run it.
 
 ![The 3D terrain example of maplibre-gl-js, built in the browser from a commit](docs/maplibre-example.png)
 
@@ -51,7 +51,7 @@ milliseconds. The first build of a maplibre-gl-js commit takes about four second
 
 ## Project config
 
-A project can have a `repro.json` at its root. Projects that cannot carry one get a preset by the
+A project can have a `livebranch.json` at its root. Projects that cannot carry one get a preset by the
 `name` of their package.json (see `src/engine/presets.ts`, which has maplibre-gl).
 
 | Field | Meaning |
@@ -74,23 +74,23 @@ and `npm run` runs a script of package.json through the same shell.
 
 ```sh
 # A link for a page laid over a branch. The branch is pinned to its commit.
-node bin/repro.ts link --gh birkskyum/maplibre-gl-js@my-branch demo.html
+node bin/livebranch.ts link --gh birkskyum/maplibre-gl-js@my-branch demo.html
 
 # A link that follows a pull request, for the PR's own description.
-node bin/repro.ts link --follow --gh https://github.com/maplibre/maplibre-gl-js/pull/8628
+node bin/livebranch.ts link --follow --gh https://github.com/maplibre/maplibre-gl-js/pull/8628
 
 # The same pipeline under Node: compile and type check, print the problems, exit 1 on errors.
-node bin/repro.ts check --dir ~/repos/maplibre-gl-js demo.html
-node bin/repro.ts check --json demo.html helper.ts
+node bin/livebranch.ts check --dir ~/repos/maplibre-gl-js demo.html
+node bin/livebranch.ts check --json demo.html helper.ts
 ```
 
-`REPRO_BASE` or `--base` sets the URL of the deployed app for `link`. Setup commands do not run
+`LIVEBRANCH_BASE` or `--base` sets the URL of the deployed app for `link`. Setup commands do not run
 under Node, so `check` of a project that needs them wants a directory where they have run.
 
 ## Worker and HTTP API
 
 The engine does not depend on the browser, so `worker/index.ts` also runs it in a Worker. The
-Worker serves the static app and answers `/api/check`, which compiles and type checks a repro and
+Worker serves the static app and answers `/api/check`, which compiles and type checks a project and
 returns its problems as JSON. It takes the parameters of a link as a query string, or a JSON body.
 
 ```sh
@@ -107,16 +107,16 @@ checked, but problems are then reported only for the page and the link's files.
 
 ## For agents and tests
 
-A link can be made without a browser and without an account. `/api/check` and `repro check` answer
+A link can be made without a browser and without an account. `/api/check` and `livebranch check` answer
 whether it compiles and type checks. Any headless browser can open the link, and the page says how
 it went.
 
-- `document.documentElement.dataset.repro` is `loading`, `ready` or `failed`.
-- `window.__repro.state` has the session (`session.problems`, `session.steps`, `session.url`), the
+- `document.documentElement.dataset.livebranch` is `loading`, `ready` or `failed`.
+- `window.__livebranch.state` has the session (`session.problems`, `session.steps`, `session.url`), the
   type errors (`typeProblems`, final when `checking` is false) and the page's console (`console`).
-- `window.__repro.exec('grep -rn foo src')` runs a shell command over the project.
-- `window.__repro.edit('/index.html', text)` changes a file and rebuilds.
-- `window.__repro.link()` returns the link with the edits in it.
+- `window.__livebranch.exec('grep -rn foo src')` runs a shell command over the project.
+- `window.__livebranch.edit('/index.html', text)` changes a file and rebuilds.
+- `window.__livebranch.link()` returns the link with the edits in it.
 
 ## Development
 

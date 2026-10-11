@@ -1,5 +1,5 @@
 import type {Problem} from './build.ts';
-import type {ReproSpec} from './spec.ts';
+import type {LinkSpec} from './spec.ts';
 
 export interface Step {
     name: string;
@@ -7,7 +7,7 @@ export interface Step {
     ms: number;
 }
 
-/** What the app shows about an opened repro. */
+/** What the app shows about an opened project. */
 export interface SessionInfo {
     id: string;
     /** The URL of the built page. */
@@ -43,7 +43,7 @@ export interface FileEntry {
 
 /** The calls that the app makes into the engine worker. */
 export interface EngineCalls {
-    open(spec: ReproSpec, options: OpenOptions): SessionInfo;
+    open(spec: LinkSpec, options: OpenOptions): SessionInfo;
     /** Writes edited files into the open project and builds it again, without the setup commands. */
     update(files: Record<string, string>): SessionInfo;
     /** Type checks the page and the link's files against the project. */

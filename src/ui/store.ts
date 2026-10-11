@@ -2,7 +2,7 @@ import {createStore, produce} from 'solid-js/store';
 import {createEngine, type Engine} from '../engine/client.ts';
 import type {Problem} from '../engine/build.ts';
 import type {SessionInfo} from '../engine/protocol.ts';
-import {decodeSpec, encodeSpec, isEmptySpec, type ReproSpec} from '../engine/spec.ts';
+import {decodeSpec, encodeSpec, isEmptySpec, type LinkSpec} from '../engine/spec.ts';
 
 export type Phase = 'landing' | 'loading' | 'ready' | 'failed';
 export type Tab = 'problems' | 'console' | 'terminal' | 'build';
@@ -14,7 +14,7 @@ export interface ConsoleEntry {
 
 export interface State {
     phase: Phase;
-    spec: ReproSpec;
+    spec: LinkSpec;
     /** Only the built page, without the workbench around it. */
     resultOnly: boolean;
     step: string;
@@ -77,8 +77,8 @@ async function ensureServiceWorker(): Promise<void> {
     });
     if (navigator.serviceWorker.controller) return;
     // A forced reload leaves the page without its service worker. A normal reload brings it back.
-    if (!sessionStorage.getItem('repro-reloaded')) {
-        sessionStorage.setItem('repro-reloaded', '1');
+    if (!sessionStorage.getItem('livebranch-reloaded')) {
+        sessionStorage.setItem('livebranch-reloaded', '1');
         location.reload();
         await new Promise(() => {});
     }
@@ -126,7 +126,7 @@ export function allProblems(): Problem[] {
 /** Counts calls of `openFromLocation`. A call that is no longer the latest drops its result. */
 let openings = 0;
 
-/** Opens the repro that the page URL names, or shows the landing page when it names none. */
+/** Opens the project that the page URL names, or shows the landing page when it names none. */
 export async function openFromLocation(): Promise<void> {
     const opening = ++openings;
     const params = new URLSearchParams(location.search);
@@ -140,7 +140,7 @@ export async function openFromLocation(): Promise<void> {
     setState({phase: 'loading', step: 'starting'});
     try {
         await ensureServiceWorker();
-        sessionStorage.removeItem('repro-reloaded');
+        sessionStorage.removeItem('livebranch-reloaded');
         const session = await getEngine().open(spec, {base, cache: !params.has('nocache') && !import.meta.env.DEV});
         if (opening === openings) finish(session);
     } catch (error) {
@@ -164,7 +164,7 @@ export function edit(path: string, text: string): void {
     }, 350);
 }
 
-/** The link of the open repro with the edits in it. */
+/** The link of the open project with the edits in it. */
 export async function shareLink(resultOnly: boolean): Promise<string> {
     const files: Record<string, string> = {...state.spec.files};
     for (const [path, text] of Object.entries(state.edits)) files[path.slice(1)] = text;

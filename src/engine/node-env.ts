@@ -5,7 +5,7 @@ import type {WasmModule} from './tsc.ts';
 let module: Promise<WasmModule> | undefined;
 
 /** The engine's environment under Node, for the command line and the tests. */
-export function nodeEnv(runtimeBase = 'https://repro.invalid/'): Env {
+export function nodeEnv(runtimeBase = 'https://livebranch.invalid/'): Env {
     return {
         fetch: (url, init) => fetch(url, init),
         runtimeBase,

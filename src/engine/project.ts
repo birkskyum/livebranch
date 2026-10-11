@@ -1,7 +1,7 @@
 import {normalize} from './path.ts';
 import {presets} from './presets.ts';
 import {fetchGist, githubSource, resolveSource, type Fetch} from './sources/github.ts';
-import {parseGithubRef, type ReproConfig, type ReproSpec} from './spec.ts';
+import {parseGithubRef, type ProjectConfig, type LinkSpec} from './spec.ts';
 import type {WasmModule} from './tsc.ts';
 import {Vfs, type FileData, type RemoteSource} from './vfs.ts';
 
@@ -50,9 +50,9 @@ export interface ScriptResult {
 export type Progress = (step: string, detail?: string) => void;
 
 export interface Project {
-    spec: ReproSpec;
+    spec: LinkSpec;
     vfs: Vfs;
-    config: ReproConfig;
+    config: ProjectConfig;
     /** The HTML page to open. */
     entry: string;
     /** A short name for the source, such as `owner/repo@1a2b3c4`. */
@@ -70,7 +70,7 @@ export interface Project {
     versions: Record<string, string>;
 }
 
-const CONFIG_FILES = ['/package.json', '/package-lock.json', '/tsconfig.json', '/repro.json'];
+const CONFIG_FILES = ['/package.json', '/package-lock.json', '/tsconfig.json', '/livebranch.json'];
 
 /** A source that is not a link parameter, such as a directory on disk. */
 export interface LocalSource {
@@ -130,7 +130,7 @@ function pathAliases(tsconfig: any): Record<string, string> {
     return alias;
 }
 
-function pickEntry(spec: ReproSpec, config: ReproConfig, overlay: string[], vfs: Vfs): string {
+function pickEntry(spec: LinkSpec, config: ProjectConfig, overlay: string[], vfs: Vfs): string {
     const named = spec.entry ?? config.entry;
     if (named) return normalize(`/${named}`);
     const pages = overlay.filter(path => path.endsWith('.html'));
@@ -141,7 +141,7 @@ function pickEntry(spec: ReproSpec, config: ReproConfig, overlay: string[], vfs:
 }
 
 /** Lists the source, lays the gist and the link's files over it, and reads the project's config. */
-export async function openProject(spec: ReproSpec, env: Env, progress: Progress = () => {}, local?: LocalSource): Promise<Project> {
+export async function openProject(spec: LinkSpec, env: Env, progress: Progress = () => {}, local?: LocalSource): Promise<Project> {
     const vfs = new Vfs();
     let label = 'inline';
     let commit: string | undefined;
@@ -193,8 +193,8 @@ export async function openProject(spec: ReproSpec, env: Env, progress: Progress 
 
     const preset = spec.preset === 'none' ? undefined : presets[spec.preset ?? packageJson.name];
     if (spec.preset && spec.preset !== 'none' && !preset) throw new Error(`Unknown preset: ${spec.preset}`);
-    const own: ReproConfig = readJson(vfs, '/repro.json') ?? {};
-    const config: ReproConfig = {
+    const own: ProjectConfig = readJson(vfs, '/livebranch.json') ?? {};
+    const config: ProjectConfig = {
         ...preset,
         ...own,
         alias: {...preset?.alias, ...own.alias},

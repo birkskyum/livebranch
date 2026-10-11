@@ -1,4 +1,4 @@
-import type {ReproConfig} from './spec.ts';
+import type {ProjectConfig} from './spec.ts';
 
 const MAPLIBRE_PAGE = `<!doctype html>
 <html lang="en">
@@ -30,10 +30,10 @@ map.addControl(new maplibregl.NavigationControl());
 const MAPLIBRE_BUNDLE = 'export * from \'../src/index.ts\';\n';
 
 /**
- * Configs for projects that cannot carry a `repro.json` of their own. The key is the `name` of the
+ * Configs for projects that cannot carry a `livebranch.json` of their own. The key is the `name` of the
  * project's package.json.
  */
-export const presets: Record<string, ReproConfig> = {
+export const presets: Record<string, ProjectConfig> = {
     // The library is compiled from `src`. Its generated sources are not in git, so the generators
     // run first. The files of `dist` stand in for the bundles, so that the example pages of the
     // repository (test/examples) run as they are. In a release the worker is a file next to the

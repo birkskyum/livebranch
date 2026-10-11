@@ -37,10 +37,10 @@ export interface BuildResult {
     sources: number;
 }
 
-const OUT = '/.repro/out';
+const OUT = '/.livebranch/out';
 /** TS2318, which `noLib` gives for each global type. */
 const MISSING_GLOBAL_TYPE = 2318;
-const TSCONFIG = '/.repro/tsconfig.json';
+const TSCONFIG = '/.livebranch/tsconfig.json';
 
 const TYPES: Record<string, string> = {
     '.html': 'text/html; charset=utf-8',
@@ -137,7 +137,7 @@ function tsconfig(project: Project, files: string[]): string {
         inlineSources: true,
         // The compiled module is served at the path of its source. The source in the map gets a
         // URL of its own, or the devtools would take the two files for one.
-        sourceRoot: 'repro:///',
+        sourceRoot: 'livebranch:///',
         outDir: OUT,
         rootDir: '/',
         types: [],
@@ -308,7 +308,7 @@ export async function build(project: Project, env: Env, progress: Progress = () 
 
     const outputs = new Map<string, Output>();
     for (const [path, data] of vfs.files) {
-        if (path === '/package-lock.json' || path.startsWith('/.repro/')) continue;
+        if (path === '/package-lock.json' || path.startsWith('/.livebranch/')) continue;
         outputs.set(path, {body: data, type: contentType(path)});
     }
     for (const [path, code] of compiled.modules) outputs.set(path, {body: code, type: TYPES['.js']});

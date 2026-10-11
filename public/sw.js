@@ -41,9 +41,9 @@ async function serve(url, scope) {
     const slash = rest.indexOf('/');
     const id = slash < 0 ? rest : rest.slice(0, slash);
     const path = slash < 0 ? '/' : rest.slice(slash);
-    const name = `repro-build-${id}`;
+    const name = `livebranch-build-${id}`;
     if (!await caches.has(name)) {
-        return notFound('This preview is not built in this browser. Open the share link of the repro instead.');
+        return notFound('This preview is not built in this browser. Open its share link instead.');
     }
     const cache = await caches.open(name);
     const base = `${scope.href}${PREFIX}${id}`;

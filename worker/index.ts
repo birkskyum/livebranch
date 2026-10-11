@@ -4,7 +4,7 @@
 import tscModule from '../public/tsc/ts_rust.wasm';
 import {checkProject} from '../src/engine/check.ts';
 import {openProject, type Env as EngineEnv} from '../src/engine/project.ts';
-import {decodeSpec, isEmptySpec, type ReproSpec} from '../src/engine/spec.ts';
+import {decodeSpec, isEmptySpec, type LinkSpec} from '../src/engine/spec.ts';
 
 interface Env {
     ASSETS: {fetch(request: Request): Promise<Response>};
@@ -24,7 +24,7 @@ function engineEnv(env: Env, origin: string): EngineEnv {
         // GitHub answers only requests that name a user agent, which a Worker does not do by itself.
         fetch(url, init) {
             const headers = new Headers(init?.headers);
-            headers.set('user-agent', 'tscrs-repro');
+            headers.set('user-agent', 'livebranch');
             if (env.GITHUB_TOKEN && url.startsWith('https://api.github.com/')) headers.set('authorization', `Bearer ${env.GITHUB_TOKEN}`);
             return fetch(url, {...init, headers});
         },
@@ -33,8 +33,8 @@ function engineEnv(env: Env, origin: string): EngineEnv {
     };
 }
 
-/** Compiles and type checks a repro and reports its problems. */
-async function check(spec: ReproSpec, env: Env, origin: string): Promise<Response> {
+/** Compiles and type checks a project and reports its problems. */
+async function check(spec: LinkSpec, env: Env, origin: string): Promise<Response> {
     if (isEmptySpec(spec)) return json({error: 'Name a source: gh, gist or files.'}, 400);
     const engine = engineEnv(env, origin);
     return json(await checkProject(await openProject(spec, engine), engine));
@@ -49,7 +49,7 @@ export default {
             if (request.method !== 'POST') return json({error: 'Use GET or POST.'}, 405);
             const body = await request.text();
             if (body.length > MAX_BODY_BYTES) return json({error: 'The request is too large.'}, 413);
-            return await check(JSON.parse(body) as ReproSpec, env, url.origin);
+            return await check(JSON.parse(body) as LinkSpec, env, url.origin);
         } catch (error) {
             return json({error: error instanceof Error ? error.message : String(error)}, 500);
         }

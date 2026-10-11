@@ -3,7 +3,7 @@
     if (window.parent === window) return;
     const send = (level, args) => {
         try {
-            window.parent.postMessage({repro: 'console', level, args: args.map(format)}, '*');
+            window.parent.postMessage({livebranch: 'console', level, args: args.map(format)}, '*');
         } catch {
             // The message is only for display.
         }
@@ -40,5 +40,5 @@
         else if (event.target?.src || event.target?.href) send('error', [`Failed to load ${event.target.src || event.target.href}`]);
     }, true);
     window.addEventListener('unhandledrejection', event => send('error', [event.reason]));
-    window.addEventListener('load', () => window.parent.postMessage({repro: 'load', title: document.title}, '*'));
+    window.addEventListener('load', () => window.parent.postMessage({livebranch: 'load', title: document.title}, '*'));
 })();
