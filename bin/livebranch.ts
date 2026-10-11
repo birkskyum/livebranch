@@ -38,7 +38,7 @@ const {values, positionals} = parseArgs({
         dir: {type: 'string'},
         entry: {type: 'string'},
         preset: {type: 'string'},
-        base: {type: 'string', default: process.env.LIVEBRANCH_BASE ?? 'http://localhost:5173/'},
+        base: {type: 'string', default: process.env.LIVEBRANCH_BASE ?? 'https://livebranch.dev/'},
         result: {type: 'boolean', default: false},
         follow: {type: 'boolean', default: false},
         json: {type: 'boolean', default: false},

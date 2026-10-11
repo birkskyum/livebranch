@@ -3,6 +3,7 @@
 {
     "$schema": "./node_modules/wrangler/config-schema.json",
     "name": "livebranch",
+    "account_id": "6cdb092c9ea997e1cbe7d46d42527d5c",
     "compatibility_date": "2026-09-25",
     "main": "./worker/index.ts",
     "assets": {
@@ -10,6 +11,9 @@
         "binding": "ASSETS",
         "run_worker_first": ["/api/*"],
     },
+    // The app has one address. Links and the previews that a browser keeps belong to it.
+    "routes": [{"pattern": "livebranch.dev", "custom_domain": true}],
+    "workers_dev": false,
     // A Worker may not compile WebAssembly from bytes, which the default build of the lexer does.
     "alias": {"es-module-lexer": "es-module-lexer/js"},
 }
