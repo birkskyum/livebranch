@@ -1,0 +1,149 @@
+# tscrs repro
+
+A playground that runs a TypeScript project in the browser, straight from a GitHub commit. The
+TypeScript compiler itself ([tsc-rs](https://github.com/pingdotgg/ts-rust), compiled to WebAssembly)
+compiles the sources in the tab, and the page loads the result as native ES modules. There is no
+bundler, no container and no server. A link holds the whole repro.
+
+![The 3D terrain example of maplibre-gl-js, built in the browser from a commit](docs/maplibre-example.png)
+
+It was made to share a branch of maplibre-gl-js with a demo page, and it works for any TypeScript
+library that a page can import.
+
+## Links
+
+Everything is in the fragment of the URL, so nothing is sent to a server.
+
+| Parameter | Meaning |
+| --- | --- |
+| `gh=owner/repo@ref` | The project. A branch, a tag or a commit. `owner/repo@pull/123` is the head of a pull request, also one from a fork. The URL of a branch, a commit, a pull request or a file on github.com works too. `owner/repo@ref:sub/dir` uses a directory of the repository as the project root. |
+| `gist=id` | Files of a gist, laid over the project. `id@revision` pins it. |
+| `code=...` | Files carried in the link itself (JSON, deflate, base64url), laid over everything else. |
+| `entry=path` | The HTML page to open. The default is the page among the link's files, or else `index.html`. |
+| `preset=name` | A built-in config. `none` turns off the detection by package name. |
+| `view=result` | Show only the built page. |
+| `nocache` | Build again even when this browser has the build. |
+
+A branch of maplibre-gl-js needs only `#gh=birkskyum/maplibre-gl-js@my-branch`, and a pull request
+only `#gh=maplibre/maplibre-gl-js@pull/8628`. Add `&entry=test/examples/3d-terrain.html` to open one
+of the repository's own example pages, as it is in that branch. A link that names a branch or a
+pull request shows its latest push. A link that names a commit never changes.
+
+A page may hold TypeScript in its inline `<script type="module">`. Imports of npm packages load
+from esm.sh, at the version that the project's `package-lock.json` or `package.json` names. An
+import of the project's own package name resolves to `src/index.ts`.
+
+## What a build does
+
+1. It lists the files of the commit with one GitHub API request and fetches only the files that
+   the page reaches through imports, from raw.githubusercontent.com.
+2. It runs the project's setup commands, such as code generators, in a worker that gives them
+   `fs`, `path`, `glob` and `process` over the project's files.
+3. tsc-rs compiles the page's scripts and everything they import at run time, without type
+   checking. For maplibre-gl-js that is about 390 modules in under a second.
+4. Imports in the output are rewritten to the paths of their sources and to CDN URLs, and a
+   service worker serves the result from the Cache API under `~p/<build id>/`.
+5. In the background, tsc-rs type checks the page and the link's files against the project and
+   the type declarations of its npm dependencies. The problems show up next to the preview.
+
+A build is kept in the browser by a hash of its inputs. Opening the same link again takes a few
+milliseconds. The first build of a maplibre-gl-js commit takes about four seconds.
+
+## Project config
+
+A project can have a `repro.json` at its root. Projects that cannot carry one get a preset by the
+`name` of their package.json (see `src/engine/presets.ts`, which has maplibre-gl).
+
+| Field | Meaning |
+| --- | --- |
+| `entry` | The HTML page to open. |
+| `setup` | Shell commands that run before the build. `node script.ts` runs the script in the browser. |
+| `alias` | Bare import specifiers that point at a project file or a URL. |
+| `entries` | Modules that nothing imports statically but the page loads, such as worker scripts. |
+| `files` | Extra files, written when the project does not have them. |
+| `prebuilt` | Generated files to take from the project's published npm package, for generators that cannot run in a browser. A warning is reported when the generator's sources differ from the release's. |
+| `cdn` | `esm.sh` (the default) or `jsdelivr`. |
+
+## Terminal
+
+The Terminal tab is a bash over the project's files ([just-bash](https://github.com/vercel-labs/just-bash)).
+`tsc` there is tsc-rs with its full command line, `node` runs a script as the setup commands do,
+and `npm run` runs a script of package.json through the same shell.
+
+## Command line
+
+```sh
+# A link for a page laid over a branch. The branch is pinned to its commit.
+node bin/repro.ts link --gh birkskyum/maplibre-gl-js@my-branch demo.html
+
+# A link that follows a pull request, for the PR's own description.
+node bin/repro.ts link --follow --gh https://github.com/maplibre/maplibre-gl-js/pull/8628
+
+# The same pipeline under Node: compile and type check, print the problems, exit 1 on errors.
+node bin/repro.ts check --dir ~/repos/maplibre-gl-js demo.html
+node bin/repro.ts check --json demo.html helper.ts
+```
+
+`REPRO_BASE` or `--base` sets the URL of the deployed app for `link`. Setup commands do not run
+under Node, so `check` of a project that needs them wants a directory where they have run.
+
+## Worker and HTTP API
+
+The engine does not depend on the browser, so `worker/index.ts` also runs it in a Worker. The
+Worker serves the static app and answers `/api/check`, which compiles and type checks a repro and
+returns its problems as JSON. It takes the parameters of a link as a query string, or a JSON body.
+
+```sh
+curl 'https://<host>/api/check?gh=owner/repo@ref&code=...'
+curl -X POST https://<host>/api/check -d '{"files": {"index.html": "<script type=\"module\">const n: number = \"x\";</script>"}}'
+```
+
+`wrangler.jsonc` describes the Worker. `pnpm exec wrangler dev` runs it in a local workerd, and
+`wrangler deploy` puts it on Cloudflare. The same config is what celld reads for self-hosting,
+which has not been tried here. A `GITHUB_TOKEN` secret lifts GitHub's limit of 60 requests an hour.
+
+Setup commands do not run in the Worker or under Node yet. A project that has them is still
+checked, but problems are then reported only for the page and the link's files.
+
+## For agents and tests
+
+A link can be made without a browser and without an account. `/api/check` and `repro check` answer
+whether it compiles and type checks. Any headless browser can open the link, and the page says how
+it went.
+
+- `document.documentElement.dataset.repro` is `loading`, `ready` or `failed`.
+- `window.__repro.state` has the session (`session.problems`, `session.steps`, `session.url`), the
+  type errors (`typeProblems`, final when `checking` is false) and the page's console (`console`).
+- `window.__repro.exec('grep -rn foo src')` runs a shell command over the project.
+- `window.__repro.edit('/index.html', text)` changes a file and rebuilds.
+- `window.__repro.link()` returns the link with the edits in it.
+
+## Development
+
+```sh
+pnpm install
+pnpm dev            # the app, with the engine in a worker
+pnpm test           # the engine under Node
+pnpm check:types    # with tsc-rs
+pnpm build          # static files in dist, for any host that serves over HTTPS
+pnpm exec wrangler dev   # the built app and the API in a local workerd
+```
+
+`public/tsc/ts_rust.wasm` is built from ts-rust at the commit that `scripts/build-wasm.sh` pins.
+The script needs Rust with the `wasm32-wasip1` target. The module here is built without wasm-opt
+(5.9 MB, 1.8 MB with Brotli).
+
+## Limits
+
+- The preview runs on the app's own origin, because a service worker serves it. Do not keep
+  anything private on that origin.
+- An anonymous client gets 60 GitHub API requests per hour. A build uses one for the file list
+  (kept afterwards) and one more when the link names a branch instead of a commit.
+- A check of a large project in the Worker makes a few hundred requests to GitHub and npm, which
+  needs a paid Workers plan on Cloudflare. Nothing is cached there yet.
+- Setup scripts get a small part of Node. A script that needs more, or that downloads from a
+  host without CORS, needs its output listed under `prebuilt`.
+- Packages from the CDN are bundled per package, so two copies of a shared dependency can load.
+- A script's own `import()` of a computed project path is not compiled unless `entries` names it.
+- tsc-rs is new, and its authors say so. The emit here matched byte for byte with and without the
+  default libs on maplibre-gl-js, which is the only large project tried so far.

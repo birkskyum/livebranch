@@ -1,0 +1,6 @@
+allowBuilds:
+  '@mongodb-js/zstd': false
+  esbuild: true
+  node-liblzma: false
+  tsc-rs: false
+  workerd: true

@@ -1,0 +1,15 @@
+// The app is a Worker that serves the static build from dist. Only /api/* runs the script
+// (worker/index.ts), which is the engine behind an HTTP API.
+{
+    "$schema": "./node_modules/wrangler/config-schema.json",
+    "name": "tscrs-repro",
+    "compatibility_date": "2026-09-25",
+    "main": "./worker/index.ts",
+    "assets": {
+        "directory": "./dist",
+        "binding": "ASSETS",
+        "run_worker_first": ["/api/*"],
+    },
+    // A Worker may not compile WebAssembly from bytes, which the default build of the lexer does.
+    "alias": {"es-module-lexer": "es-module-lexer/js"},
+}
