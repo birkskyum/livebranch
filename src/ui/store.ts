@@ -15,8 +15,6 @@ export interface ConsoleEntry {
 export interface State {
     phase: Phase;
     spec: LinkSpec;
-    /** Only the built page, without the workbench around it. */
-    resultOnly: boolean;
     step: string;
     error: string;
     session: SessionInfo | undefined;
@@ -27,7 +25,10 @@ export interface State {
     /** Counts reloads of the preview. */
     runs: number;
     tab: Tab;
+    /** The files and the editor, left of the preview. */
     showCode: boolean;
+    /** The problems, the console, the terminal and the build log, below the preview. */
+    showPanel: boolean;
     file: string | undefined;
     /** Files edited in the app and not in the link yet. */
     edits: Record<string, string>;
@@ -40,7 +41,6 @@ export interface State {
 export const [state, setState] = createStore<State>({
     phase: 'landing',
     spec: {},
-    resultOnly: false,
     step: '',
     error: '',
     session: undefined,
@@ -50,6 +50,7 @@ export const [state, setState] = createStore<State>({
     runs: 0,
     tab: 'console',
     showCode: true,
+    showPanel: true,
     file: undefined,
     edits: {},
     building: false,
@@ -113,6 +114,7 @@ function finish(session: SessionInfo): void {
         draft.typeProblems = [];
         draft.checking = true;
         if (errors) draft.tab = 'problems';
+        else if (draft.tab === 'problems') draft.tab = 'console';
     }));
     void checkTypes(session.id);
 }
@@ -144,7 +146,9 @@ export async function openFromLocation(): Promise<void> {
     const params = new URLSearchParams(location.search);
     for (const [key, value] of new URLSearchParams(location.hash.slice(1))) params.set(key, value);
     const spec = await decodeSpec(location.search, location.hash);
-    setState({spec, resultOnly: params.get('view') === 'result', edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', error: ''});
+    // A result link starts with only the preview. The code and the console are one click away.
+    const resultOnly = params.get('view') === 'result';
+    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', error: ''});
     if (isEmptySpec(spec)) {
         setState('phase', 'landing');
         return;
@@ -190,8 +194,22 @@ export function edit(path: string, text: string): void {
     }, 350);
 }
 
+/** Whether only the preview shows. */
+export function isResultOnly(): boolean {
+    return !state.showCode && !state.showPanel;
+}
+
+/** Shows or hides a part of the workbench, and keeps the address in step so that it can be copied. */
+export function setView(change: Partial<Pick<State, 'showCode' | 'showPanel' | 'tab'>>): void {
+    setState(change);
+    const params = new URLSearchParams(location.hash.slice(1));
+    params.delete('view');
+    const rest = params.toString().replaceAll('%2F', '/').replaceAll('%40', '@').replaceAll('%3A', ':');
+    history.replaceState(null, '', `#${isResultOnly() ? 'view=result&' : ''}${rest}`);
+}
+
 /** The link of the open project with the edits in it. */
-export async function shareLink(resultOnly: boolean): Promise<string> {
+export async function shareLink(resultOnly = isResultOnly()): Promise<string> {
     const files: Record<string, string> = {...state.spec.files};
     for (const [path, text] of Object.entries(state.edits)) files[path.slice(1)] = text;
     const params = await encodeSpec({...state.spec, files});

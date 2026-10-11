@@ -17,7 +17,7 @@ declare global {
 
 export function App() {
     onMount(() => {
-        window.__livebranch = {state, exec: command => getEngine().exec(command), edit, link: resultOnly => shareLink(resultOnly ?? false)};
+        window.__livebranch = {state, exec: command => getEngine().exec(command), edit, link: resultOnly => shareLink(resultOnly)};
         void openFromLocation();
         const reopen = () => void openFromLocation();
         window.addEventListener('hashchange', reopen);

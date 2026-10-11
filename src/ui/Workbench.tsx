@@ -2,7 +2,9 @@ import {For, Match, Show, Switch, createMemo, createSignal} from 'solid-js';
 import {CodePanel} from './CodePanel.tsx';
 import {Preview} from './Preview.tsx';
 import {Terminal} from './Terminal.tsx';
-import {allProblems, setState, shareLink, state, type Tab} from './store.ts';
+import {baseSource} from '../engine/spec.ts';
+import {RefLinks} from './RefLinks.tsx';
+import {allProblems, setState, setView, shareLink, state, type Tab} from './store.ts';
 
 const button = 'rounded px-2 py-1 hover:bg-neutral-200 dark:hover:bg-neutral-800';
 
@@ -28,35 +30,53 @@ function Status() {
 }
 
 function Header() {
-    const [copied, setCopied] = createSignal('');
-    const copy = async (resultOnly: boolean) => {
-        await navigator.clipboard.writeText(await shareLink(resultOnly));
-        setCopied(resultOnly ? 'result' : 'full');
-        setTimeout(() => setCopied(''), 1500);
+    const [copied, setCopied] = createSignal(false);
+    const copy = async () => {
+        await navigator.clipboard.writeText(await shareLink());
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
     };
-    const commitUrl = () => {
-        const match = /^([^@:]+)(?:@pull\/(\d+))?/.exec(state.spec.gh ?? '');
-        if (!match || !state.session?.commit) return undefined;
-        return match[2] ? `https://github.com/${match[1]}/pull/${match[2]}` : `https://github.com/${match[1]}/tree/${state.session.commit}`;
+    const errors = () => allProblems().filter(problem => problem.category === 'error').length;
+    const logged = () => state.console.length;
+    const loggedErrors = () => state.console.some(entry => entry.level === 'error');
+    /** Opens the panel on a tab, or closes it when that tab already shows. */
+    const toggleTab = (tab: Tab) => {
+        if (state.showPanel && state.tab === tab) setView({showPanel: false});
+        else setView({showPanel: true, tab});
     };
+    const on = 'bg-neutral-200 dark:bg-neutral-800';
     return (
         <header class="flex h-10 shrink-0 items-center gap-3 border-b border-neutral-200 px-3 dark:border-neutral-800">
             <a class="font-semibold" href="#">livebranch</a>
-            <Show when={state.session}>
-                {session => (
-                    <Show when={commitUrl()} fallback={<span class="font-mono text-xs">{session().label}</span>}>
-                        <a class="font-mono text-xs text-blue-600 hover:underline dark:text-blue-400" href={commitUrl()} target="_blank" rel="noreferrer">{session().label}</a>
-                    </Show>
-                )}
-            </Show>
+            <Sources />
             <Status />
             <div class="ml-auto flex items-center gap-1">
-                <button class={button} onClick={() => setState('showCode', !state.showCode)}>{state.showCode ? 'Hide code' : 'Show code'}</button>
+                <button class={button} classList={{[on]: state.showCode}} aria-pressed={state.showCode} onClick={() => setView({showCode: !state.showCode})}>Code</button>
+                <button class={button} classList={{[on]: state.showPanel && state.tab === 'problems', 'text-red-600 dark:text-red-400': errors() > 0}} onClick={() => toggleTab('problems')}>
+                    Problems{allProblems().length ? ` (${allProblems().length})` : ''}
+                </button>
+                <button class={button} classList={{[on]: state.showPanel && state.tab === 'console', 'text-red-600 dark:text-red-400': loggedErrors()}} onClick={() => toggleTab('console')}>
+                    Console{logged() ? ` (${logged()})` : ''}
+                </button>
                 <button class={button} onClick={() => setState('runs', state.runs + 1)}>Reload</button>
-                <button class={button} onClick={() => copy(false)}>{copied() === 'full' ? 'Copied' : 'Copy link'}</button>
-                <button class={button} onClick={() => copy(true)}>{copied() === 'result' ? 'Copied' : 'Copy result link'}</button>
+                <button class={button} onClick={copy}>{copied() ? 'Copied' : 'Copy link'}</button>
             </div>
         </header>
+    );
+}
+
+/** The refs that are running, each linked to its page on GitHub and to its commit. */
+function Sources() {
+    return (
+        <span class="flex min-w-0 items-center gap-2 font-mono text-xs">
+            <Show when={state.session} fallback={<span>{state.spec.gh ?? ''}</span>}>
+                <Show when={baseSource(state.spec)}>
+                    <RefLinks gh={baseSource(state.spec)} session={state.base} />
+                    <span class="text-neutral-400">and</span>
+                </Show>
+                <RefLinks gh={state.spec.gh} session={state.session} fallback={state.session!.label} />
+            </Show>
+        </span>
     );
 }
 
@@ -71,7 +91,7 @@ function Problems() {
                             {problem.category}
                         </span>
                         <Show when={problem.file}>
-                            <button class="shrink-0 text-blue-600 hover:underline dark:text-blue-400" onClick={() => setState({file: problem.file, showCode: true})}>
+                            <button class="shrink-0 text-blue-600 hover:underline dark:text-blue-400" onClick={() => { setState('file', problem.file); setView({showCode: true}); }}>
                                 {problem.file!.slice(1)}{problem.line ? `:${problem.line}` : ''}
                             </button>
                         </Show>
@@ -168,40 +188,17 @@ function Failure() {
 
 export function Workbench() {
     return (
-        <Show when={!state.resultOnly} fallback={<ResultOnly />}>
-            <div class="flex h-full flex-col">
-                <Header />
-                <Show when={state.phase !== 'failed'} fallback={<Failure />}>
-                    <div class="flex min-h-0 flex-1">
-                        <Show when={state.showCode && state.session}>
-                            <div class="flex w-1/2 min-w-0 border-r border-neutral-200 dark:border-neutral-800"><CodePanel /></div>
-                        </Show>
-                        <div class="min-w-0 flex-1"><Preview /></div>
-                    </div>
-                    <BottomPanel />
-                </Show>
-            </div>
-        </Show>
-    );
-}
-
-/** The built page alone. A small link opens the workbench for the same link. */
-function ResultOnly() {
-    const full = () => `#${location.hash.slice(1).replace(/(^|&)view=result(&|$)/, '$1').replace(/&$/, '')}`;
-    const errors = () => allProblems().filter(problem => problem.category === 'error').length;
-    return (
-        <div class="relative h-full">
-            <Show when={state.phase !== 'failed'} fallback={<Failure />}><Preview /></Show>
-            <a
-                class="absolute bottom-2 left-2 rounded bg-neutral-900/80 px-2 py-1 text-xs text-white hover:bg-neutral-900"
-                href={full()}
-                data-testid="status"
-            >
-                <Switch fallback="livebranch">
-                    <Match when={state.phase === 'loading'}>{state.step || 'building'}…</Match>
-                    <Match when={errors()}>{errors()} {errors() === 1 ? 'error' : 'errors'}</Match>
-                </Switch>
-            </a>
+        <div class="flex h-full flex-col">
+            <Header />
+            <Show when={state.phase !== 'failed'} fallback={<Failure />}>
+                <div class="flex min-h-0 flex-1">
+                    <Show when={state.showCode && state.session}>
+                        <div class="flex w-1/2 min-w-0 border-r border-neutral-200 dark:border-neutral-800"><CodePanel /></div>
+                    </Show>
+                    <div class="min-w-0 flex-1"><Preview /></div>
+                </div>
+                <Show when={state.showPanel}><BottomPanel /></Show>
+            </Show>
         </div>
     );
 }
