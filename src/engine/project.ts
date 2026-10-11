@@ -1,5 +1,5 @@
 import {normalize} from './path.ts';
-import {presets} from './presets.ts';
+import {fetchAdapter, readConfig} from './adapters.ts';
 import {isSourcePath} from './resolve.ts';
 import {fetchGist, githubSource, resolveSource, type Fetch} from './sources/github.ts';
 import {parseGithubRef, type ProjectConfig, type LinkSpec} from './spec.ts';
@@ -71,7 +71,7 @@ export interface Project {
     versions: Record<string, string>;
 }
 
-const CONFIG_FILES = ['/package.json', '/package-lock.json', '/tsconfig.json', '/livebranch.json'];
+const CONFIG_FILES = ['/package.json', '/package-lock.json', '/tsconfig.json', '/livebranch.json', '/.github/livebranch.json'];
 
 /** A source that is not a link parameter, such as a directory on disk. */
 export interface LocalSource {
@@ -142,7 +142,8 @@ function pickEntry(spec: LinkSpec, config: ProjectConfig, overlay: string[], vfs
     const pages = overlay.filter(path => path.endsWith('.html'));
     const page = pages.find(path => path === '/index.html') ?? pages[0];
     if (page) return page;
-    const scripts = overlay.filter(isSourcePath);
+    // A script at the root of the link's files is the demo. One further down replaces a project file.
+    const scripts = overlay.filter(path => isSourcePath(path) && path.lastIndexOf('/') === 0);
     const script = DEMO_NAMES.find(name => scripts.includes(name)) ?? (scripts.length === 1 ? scripts[0] : undefined);
     if (script) return script;
     if (config.entry) return normalize(`/${config.entry}`);
@@ -201,15 +202,17 @@ export async function openProject(spec: LinkSpec, env: Env, progress: Progress =
     const packageJson = readJson(vfs, '/package.json') ?? {};
     const lock = readJson(vfs, '/package-lock.json');
 
-    const preset = spec.preset === 'none' ? undefined : presets[spec.preset ?? packageJson.name];
-    if (spec.preset && spec.preset !== 'none' && !preset) throw new Error(`Unknown preset: ${spec.preset}`);
-    const own: ProjectConfig = readJson(vfs, '/livebranch.json') ?? {};
+    // The project's own config wins over its adapter, field by field.
+    const adapterName: string | undefined = spec.adapter === 'none' ? undefined : spec.adapter ?? packageJson.name;
+    const adapter = adapterName ? await fetchAdapter(env.fetch, adapterName) : undefined;
+    if (spec.adapter && spec.adapter !== 'none' && !adapter) throw new Error(`There is no adapter named ${spec.adapter}.`);
+    const own = readConfig(readJson(vfs, '/livebranch.json') ?? readJson(vfs, '/.github/livebranch.json'));
     const config: ProjectConfig = {
-        ...preset,
+        ...adapter,
         ...own,
-        alias: {...preset?.alias, ...own.alias},
-        files: {...preset?.files, ...own.files},
-        entries: [...preset?.entries ?? [], ...own.entries ?? []],
+        alias: {...adapter?.alias, ...own.alias},
+        files: {...adapter?.files, ...own.files},
+        entries: [...adapter?.entries ?? [], ...own.entries ?? []],
     };
     for (const [name, text] of Object.entries(config.files ?? {})) {
         const path = normalize(`/${name}`);
@@ -234,6 +237,6 @@ export async function openProject(spec: LinkSpec, env: Env, progress: Progress =
     }
 
     const entry = pickEntry(spec, config, overlayPaths, vfs);
-    const id = await hash([ENGINE_VERSION, commit, subdir, overlay, spec.preset, entry]);
+    const id = await hash([ENGINE_VERSION, commit, subdir, overlay, adapter, entry]);
     return {spec, vfs, config, entry, label, commit, id, alias, overlay: overlayPaths, packageJson, versions};
 }

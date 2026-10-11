@@ -4,7 +4,8 @@ import {build} from './build.ts';
 import {nodeEnv} from './node-env.ts';
 import {openProject} from './project.ts';
 
-const env = nodeEnv('https://app.test/');
+// No test reaches the network. A project with a package name would ask for its adapter.
+const env = nodeEnv('https://app.test/', async () => new Response('', {status: 404}));
 
 function text(body: unknown): string {
     assert.equal(typeof body, 'string');
@@ -107,4 +108,23 @@ test('a script entry runs in a page made from the template', async () => {
     project.vfs.write('/demo.ts', 'const n: number = "one";\n');
     const problems = await typeCheck(project, env, new Set(['/demo.ts']));
     assert.deepEqual(problems.map(found => `${found.file}:${found.line} TS${found.code}`), ['/demo.ts:1 TS2322']);
+});
+
+test('a project gets the adapter of its package name, and its own config wins', async () => {
+    const adapter = {about: 'x', entry: 'demo.ts', alias: {lib: './src/a.ts'}, template: ['<div id="map"></div>', '<!--entry-->'], files: {'demo.ts': ['import {a} from \'lib\';', 'console.log(a);']}};
+    const asked: string[] = [];
+    const withAdapter = nodeEnv('https://app.test/', async url => {
+        asked.push(url);
+        return url.endsWith('/adapters/some-lib.json') ? Response.json(adapter) : new Response('', {status: 404});
+    });
+    const project = await openProject({
+        files: {'package.json': '{"name": "some-lib"}', 'src/a.ts': 'export const a = 1;\n', '.github/livebranch.json': '{"alias": {"other": "./src/a.ts"}}'},
+    }, withAdapter);
+    assert.deepEqual(asked, ['https://raw.githubusercontent.com/birkskyum/livebranch-adapters/main/adapters/some-lib.json']);
+    assert.equal(project.entry, '/demo.ts');
+    assert.deepEqual(project.alias, {lib: './src/a.ts', other: './src/a.ts'});
+    const result = await build(project, withAdapter);
+    assert.deepEqual(result.problems, []);
+    assert.match(text(result.outputs.get('/index.html')?.body), /<div id="map"><\/div>\n<script type="module" src="\.\/demo\.ts"><\/script>/);
+    assert.match(text(result.outputs.get('/demo.ts')?.body), /from '\.\/src\/a\.ts'/);
 });

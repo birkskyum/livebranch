@@ -21,7 +21,7 @@ Everything is in the fragment of the URL, so nothing is sent to a server.
 | `gist=id` | Files of a gist, laid over the project. `id@revision` pins it. |
 | `code=...` | Files carried in the link itself (JSON, deflate, base64url), laid over everything else. |
 | `entry=path` | The page to open, or a script to run. The default is the page or the script among the link's files, or else what the project's config names. |
-| `preset=name` | A built-in config. `none` turns off the detection by package name. |
+| `adapter=name` | The adapter to use. `none` turns off the lookup by package name. |
 | `view=result` | Show only the built page. |
 | `nocache` | Build again even when this browser has the build. |
 
@@ -63,8 +63,12 @@ any GitHub URL of a repository, a branch, a pull request, a commit or an example
 
 ## Project config
 
-A project can have a `livebranch.json` at its root. Projects that cannot carry one get a preset by the
-`name` of their package.json (see `src/engine/presets.ts`, which has maplibre-gl).
+A project says how it runs in a `livebranch.json`, at its root or in `.github`. A project without
+one gets its adapter, which is the same kind of file kept in
+[livebranch-adapters](https://github.com/birkskyum/livebranch-adapters) under the `name` of the
+project's package.json. Anyone can add an adapter there. The project's own file wins over its
+adapter, field by field. In these files a long text (`template`, a value of `files`) may be an
+array of lines.
 
 | Field | Meaning |
 | --- | --- |

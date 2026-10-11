@@ -4,7 +4,8 @@ import {nodeEnv} from './node-env.ts';
 import {openProject} from './project.ts';
 import {createShell} from './shell.ts';
 
-const env = nodeEnv('https://app.test/');
+// No test reaches the network. A project with a package name would ask for its adapter.
+const env = nodeEnv('https://app.test/', async () => new Response('', {status: 404}));
 
 test('the shell works on the project files and keeps its working directory', async () => {
     const project = await openProject({

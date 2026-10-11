@@ -8,8 +8,8 @@ export interface LinkSpec {
     files?: Record<string, string>;
     /** The HTML page to open. */
     entry?: string;
-    /** A built-in config, or `none` to turn off detection by package name. */
-    preset?: string;
+    /** The adapter to use, by name, or `none` to turn off the lookup by package name. */
+    adapter?: string;
     /**
      * A second ref to run the same page against, shown next to the first: a ref of the same
      * repository (`main`) or a full source (`owner/repo@ref`).
@@ -17,7 +17,7 @@ export interface LinkSpec {
     base?: string;
 }
 
-/** `livebranch.json` at the project root, or a preset. */
+/** A project's `livebranch.json` (at its root or in `.github`), or its adapter. */
 export interface ProjectConfig {
     /** The HTML page to open, `index.html` by default. */
     entry?: string;
@@ -109,7 +109,7 @@ export function baseSource(spec: LinkSpec): string | undefined {
     return `${owner}/${repo}@${spec.base}`;
 }
 
-const PARAMS = ['gh', 'base', 'gist', 'entry', 'preset'] as const;
+const PARAMS = ['gh', 'base', 'gist', 'entry', 'adapter'] as const;
 
 function toBase64Url(bytes: Uint8Array): string {
     let binary = '';

@@ -13,8 +13,8 @@ import {baseSource, encodeSpec, normalizeGithubSource, parseGithubRef, type Link
 import {isBinaryPath} from '../src/engine/vfs.ts';
 
 const USAGE = `usage:
-  livebranch link  [--gh owner/repo@ref] [--base ref] [--gist id] [--entry file] [--preset name] [--result] [--follow] [--site url] [file ...]
-  livebranch check [--gh owner/repo@ref | --dir path] [--gist id] [--entry file] [--preset name] [--json] [file ...]
+  livebranch link  [--gh owner/repo@ref] [--base ref] [--gist id] [--entry file] [--adapter name] [--result] [--follow] [--site url] [file ...]
+  livebranch check [--gh owner/repo@ref | --dir path] [--gist id] [--entry file] [--adapter name] [--json] [file ...]
 
 A file is a path, or name=path to give it another name in the project. Files are laid over the
 GitHub source, the gist or the directory.
@@ -41,7 +41,7 @@ const {values, positionals} = parseArgs({
         gist: {type: 'string'},
         dir: {type: 'string'},
         entry: {type: 'string'},
-        preset: {type: 'string'},
+        adapter: {type: 'string'},
         site: {type: 'string', default: process.env.LIVEBRANCH_BASE ?? 'https://livebranch.dev/'},
         result: {type: 'boolean', default: false},
         follow: {type: 'boolean', default: false},
@@ -63,7 +63,7 @@ async function overlay(): Promise<Record<string, string>> {
 
 async function spec(): Promise<LinkSpec> {
     const source = values.gh ? normalizeGithubSource(values.gh) : undefined;
-    return {gh: source?.gh, base: values.base, gist: values.gist, entry: values.entry ?? source?.entry, preset: values.preset, files: await overlay()};
+    return {gh: source?.gh, base: values.base, gist: values.gist, entry: values.entry ?? source?.entry, adapter: values.adapter, files: await overlay()};
 }
 
 function directorySource(dir: string): LocalSource {
