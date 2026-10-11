@@ -8,7 +8,8 @@ import type {Problem} from '../src/engine/build.ts';
 import {checkProject} from '../src/engine/check.ts';
 import {nodeEnv} from '../src/engine/node-env.ts';
 import {openProject, type LocalSource} from '../src/engine/project.ts';
-import {resolveSource} from '../src/engine/sources/github.ts';
+import {listTree, resolveRef} from '../src/engine/sources/git.ts';
+import {resolveSource, type Fetch, type GitReader} from '../src/engine/sources/github.ts';
 import {baseSource, encodeSpec, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
 import {isBinaryPath} from '../src/engine/vfs.ts';
 
@@ -50,6 +51,8 @@ const {values, positionals} = parseArgs({
     },
 });
 const [command, ...fileArgs] = positionals;
+const request: Fetch = (url, init) => fetch(url, init);
+const git: GitReader = {resolve: (owner, repo, ref) => resolveRef(request, owner, repo, ref), tree: (owner, repo, commit) => listTree(request, owner, repo, commit)};
 
 async function overlay(): Promise<Record<string, string>> {
     const files: Record<string, string> = {};
@@ -94,12 +97,12 @@ if (values.help || !command) {
 } else if (command === 'link') {
     const wanted = await spec();
     if (wanted.gh && !values.follow) {
-        const {source, commit, entry} = await resolveSource((url, init) => fetch(url, init), parseGithubRef(wanted.gh), wanted.entry);
+        const {source, commit, entry} = await resolveSource(request, parseGithubRef(wanted.gh), wanted.entry, git);
         wanted.gh = `${source.owner}/${source.repo}@${commit}${source.subdir ? `:${source.subdir}` : ''}`;
         wanted.entry = entry;
         const against = baseSource({gh: values.gh && normalizeGithubSource(values.gh).gh, base: wanted.base});
         if (against) {
-            const pinned = await resolveSource((url, init) => fetch(url, init), parseGithubRef(against), undefined);
+            const pinned = await resolveSource(request, parseGithubRef(against), undefined, git);
             wanted.base = `${pinned.source.owner}/${pinned.source.repo}@${pinned.commit}`;
         }
     }

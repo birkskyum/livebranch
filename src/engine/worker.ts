@@ -59,8 +59,19 @@ function runScript(base: string, request: ScriptRequest, streams: ScriptIo): Pro
 }
 
 function createEnv(base: string): Env {
+    // The site's server reads GitHub's git endpoint for the browser, which may not. Where the site
+    // has no server (the dev server, a static host), these fail and the engine asks GitHub's API.
+    const ask = async (path: string) => {
+        const response = await fetch(`${base}api/github/${path}`);
+        if (!response.ok || !response.headers.get('content-type')?.includes('json')) throw new Error('The site has no GitHub reader.');
+        return response.json();
+    };
     return {
         fetch: cachedFetch,
+        git: {
+            resolve: async (owner, repo, ref) => (await ask(`resolve?repo=${owner}/${repo}&ref=${encodeURIComponent(ref)}`)).commit ?? undefined,
+            tree: async (owner, repo, commit) => (await ask(`tree?repo=${owner}/${repo}&commit=${commit}`)).paths,
+        },
         runtimeBase: base,
         wasm() {
             wasm ??= WebAssembly.compileStreaming(fetch(`${base}tsc/ts_rust.wasm`));

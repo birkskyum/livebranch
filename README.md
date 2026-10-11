@@ -123,9 +123,10 @@ agents that use the site.
 `wrangler deploy` puts it on livebranch.dev. The same config is what celld reads for self-hosting,
 which has not been tried here.
 
-The Worker has no GitHub token of its own. Cloudflare's addresses share GitHub's anonymous limit, so
-a caller sends a token of their own to read from GitHub, and the Worker passes it on. One address
-gets 30 API requests a minute.
+The Worker has no GitHub token of its own and needs none for branches, tags, pull requests and
+commits, which it reads through GitHub's git endpoint. For a gist or an abbreviated commit hash a
+caller sends a token of their own, and the Worker passes it on. One address gets 30 requests a
+minute to the link and check endpoints, and 300 to the GitHub reader.
 
 Setup commands do not run in the Worker or under Node yet. A project that has them is still
 checked, but problems are then reported only for the page and the link's files.
@@ -163,8 +164,10 @@ The script needs Rust with the `wasm32-wasip1` target. The module here is built 
 
 - The preview runs on the app's own origin, because a service worker serves it. Do not keep
   anything private on that origin.
-- An anonymous client gets 60 GitHub API requests per hour. A build uses one for the file list
-  (kept afterwards) and one more when the link names a branch instead of a commit.
+- Refs and file lists are read through GitHub's git endpoint (`src/engine/sources/git.ts`), which
+  has no hourly allowance. A browser may not ask that endpoint, so the Worker does it for the page
+  at `/api/github/*`. Without the Worker (the dev server, a static host) the page asks GitHub's
+  API, where an anonymous address gets 60 requests an hour. Gists always go through the API.
 - A check of a large project in the Worker makes a few hundred requests to GitHub and npm, which
   needs a paid Workers plan on Cloudflare. Nothing is cached there yet.
 - Setup scripts get a small part of Node. A script that needs more, or that downloads from a

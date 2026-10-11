@@ -76,7 +76,7 @@ It compiles and type checks, and answers `{"problems": [{"file", "line", "column
 
 Two limits apply to checks on the server:
 
-- Reading from GitHub needs a token. The server shares GitHub's anonymous limit with many others, so send one of your own as `Authorization: Bearer <token>`. A token without any permission is enough for public repositories. It is passed on to api.github.com only and is not kept. Checks of files sent in the body need none.
+- Branches, tags, pull requests and full commit hashes need no token. Only an abbreviated commit hash or a gist is read through GitHub's API, and for those the server needs a token of yours as `Authorization: Bearer <token>`, since it shares the anonymous limit with many others. A token without any permission is enough. It is passed on to api.github.com only and is not kept.
 - Setup commands of a project (code generators) do not run on the server. For such a project (`skippedSetup` is not empty) only problems in the demo's own files are reported. A browser runs the setup and gives the full result.
 
 ## Reading the result in a browser
@@ -100,4 +100,4 @@ Any headless browser can open a link. The page says how it went:
 
 - The repository has to be public.
 - What runs is the source of the ref, compiled file by file. It is not the project's own bundle, so it does not show bundle size, bundler behaviour or load performance.
-- An anonymous visitor gets 60 GitHub API requests an hour. A build uses one or two.
+- The site reads branches and file lists through GitHub's git endpoint, which has no hourly allowance. Gists and abbreviated commit hashes go through GitHub's API, where an anonymous visitor gets 60 requests an hour.

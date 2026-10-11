@@ -1,7 +1,7 @@
 import {normalize} from './path.ts';
 import {adapterFits, fetchAdapter, readConfig} from './adapters.ts';
 import {isSourcePath} from './resolve.ts';
-import {fetchGist, githubSource, resolveSource, type Fetch} from './sources/github.ts';
+import {fetchGist, githubSource, resolveSource, type Fetch, type GitReader} from './sources/github.ts';
 import {parseGithubRef, type ProjectConfig, type LinkSpec} from './spec.ts';
 import type {WasmModule} from './tsc.ts';
 import {Vfs, type FileData, type RemoteSource} from './vfs.ts';
@@ -15,6 +15,8 @@ export interface Env {
     /** The URL of the app, ending with a slash. */
     runtimeBase: string;
     wasm(): Promise<WasmModule>;
+    /** Reads refs and file lists from GitHub without its API, where the environment can. */
+    git?: GitReader;
     /** Puts files where the preview and script runs load them from. Only a browser has it. */
     publish?(id: string, files: Map<string, {body: FileData; type: string}>): Promise<void>;
     /** Runs a compiled script in a worker with the Node shims. Only a browser has it. */
@@ -165,7 +167,7 @@ export async function openProject(spec: LinkSpec, env: Env, progress: Progress =
     } else if (spec.gh) {
         const wanted = parseGithubRef(spec.gh);
         progress('resolve', `${wanted.owner}/${wanted.repo}@${wanted.ref}`);
-        const resolved = await resolveSource(env.fetch, wanted, spec.entry);
+        const resolved = await resolveSource(env.fetch, wanted, spec.entry, env.git);
         const source = resolved.source;
         commit = resolved.commit;
         if (source.ref !== wanted.ref) spec = {...spec, gh: `${source.owner}/${source.repo}@${source.ref}`, entry: resolved.entry};
@@ -173,7 +175,7 @@ export async function openProject(spec: LinkSpec, env: Env, progress: Progress =
         repository = `${source.owner}/${source.repo}`;
         const pull = /^pull\/(\d+)\/head$/.exec(source.ref);
         label = `${source.owner}/${source.repo}${pull ? `#${pull[1]}` : ''}@${commit.slice(0, 7)}${subdir ? `/${subdir}` : ''}`;
-        vfs.source = githubSource(env.fetch, source, commit);
+        vfs.source = githubSource(env.fetch, source, commit, env.git);
         progress('list', label);
     }
     if (vfs.source) {

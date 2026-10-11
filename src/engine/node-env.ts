@@ -1,5 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import type {Env} from './project.ts';
+import {listTree, resolveRef} from './sources/git.ts';
 import type {Fetch} from './sources/github.ts';
 import type {WasmModule} from './tsc.ts';
 
@@ -9,6 +10,8 @@ let module: Promise<WasmModule> | undefined;
 export function nodeEnv(runtimeBase = 'https://livebranch.invalid/', request: Fetch = (url, init) => fetch(url, init)): Env {
     return {
         fetch: request,
+        // Node has no CORS, so it reads GitHub's git endpoint itself.
+        git: {resolve: (owner, repo, ref) => resolveRef(request, owner, repo, ref), tree: (owner, repo, commit) => listTree(request, owner, repo, commit)},
         runtimeBase,
         wasm() {
             module ??= readFile(new URL('../../public/tsc/ts_rust.wasm', import.meta.url)).then(bytes => WebAssembly.compile(bytes));

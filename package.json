@@ -29,6 +29,7 @@
     "codemirror": "^6.0.2",
     "es-module-lexer": "^3.0.3",
     "just-bash": "^3.6.0",
+    "pako": "^3.0.2",
     "solid-js": "^1.9.17"
   },
   "devDependencies": {

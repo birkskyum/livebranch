@@ -4,13 +4,16 @@
 import tscModule from '../public/tsc/ts_rust.wasm';
 import {checkProject} from '../src/engine/check.ts';
 import {openProject, type Env as EngineEnv} from '../src/engine/project.ts';
-import {resolveSource} from '../src/engine/sources/github.ts';
+import {listTree, resolveRef} from '../src/engine/sources/git.ts';
+import {resolveSource, type GitReader} from '../src/engine/sources/github.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
 
 interface Env {
     ASSETS: {fetch(request: Request): Promise<Response>};
     /** Counts requests to the API per address. */
     API_LIMIT?: {limit(options: {key: string}): Promise<{success: boolean}>};
+    /** The same for the GitHub reader, which a page asks several times and which is cheap. */
+    GITHUB_LIMIT?: {limit(options: {key: string}): Promise<{success: boolean}>};
     /** Optional secret. Without it, a caller sends a GitHub token of their own to read from GitHub. */
     GITHUB_TOKEN?: string;
 }
@@ -22,8 +25,45 @@ const CORS = {
     'access-control-allow-methods': 'GET, POST, OPTIONS',
 };
 
-function json(body: unknown, status = 200): Response {
-    return new Response(`${JSON.stringify(body, null, 2)}\n`, {status, headers: {'content-type': 'application/json; charset=utf-8', ...CORS}});
+function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+    return new Response(`${JSON.stringify(body, null, 2)}\n`, {status, headers: {'content-type': 'application/json; charset=utf-8', ...CORS, ...headers}});
+}
+
+const git: GitReader = {
+    resolve: (owner, repo, ref) => resolveRef((url, init) => fetch(url, init), owner, repo, ref),
+    tree: (owner, repo, commit) => listTree((url, init) => fetch(url, init), owner, repo, commit),
+};
+
+/**
+ * Reads a ref or a commit's file list from GitHub's git endpoint, for browsers, which may not ask
+ * it themselves. The answers are kept at the edge: a commit's files for good, a ref for half a minute.
+ */
+async function github(request: Request, url: URL, context: ExecutionContext): Promise<Response> {
+    const hit = await caches.default.match(request);
+    if (hit) return hit;
+    const [owner, repo, more] = (url.searchParams.get('repo') ?? '').split('/');
+    if (!owner || !repo || more !== undefined || !/^[\w.-]+$/.test(owner + repo)) throw new ApiError(400, 'Name the repository as repo=owner/name.');
+    let response: Response;
+    try {
+        if (url.pathname === '/api/github/resolve') {
+            const ref = url.searchParams.get('ref') ?? '';
+            if (!ref) throw new ApiError(400, 'Name a ref.');
+            response = json({commit: await git.resolve(owner, repo, ref) ?? null}, 200, {'cache-control': 'public, max-age=30'});
+        } else if (url.pathname === '/api/github/tree') {
+            const commit = url.searchParams.get('commit') ?? '';
+            if (!/^[0-9a-f]{40}$/.test(commit)) throw new ApiError(400, 'Name a commit by its full hash.');
+            const body = JSON.stringify({paths: await git.tree(owner, repo, commit)});
+            response = new Response(body, {headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=31536000, immutable', ...CORS}});
+        } else {
+            throw new ApiError(404, `There is no ${url.pathname}.`);
+        }
+    } catch (error) {
+        const status = (error as {status?: number}).status;
+        if (error instanceof ApiError || status === undefined) throw error;
+        throw new ApiError(status === 404 || status === 401 ? 404 : 502, status === 404 || status === 401 ? `There is no public repository ${owner}/${repo}.` : `GitHub answered ${status}.`);
+    }
+    context.waitUntil(caches.default.put(request, response.clone()));
+    return response;
 }
 
 /** A failure that the caller can do something about, with the status to answer with. */
@@ -41,6 +81,7 @@ class ApiError extends Error {
  */
 function engineEnv(env: Env, origin: string, token: string | undefined): EngineEnv {
     return {
+        git,
         async fetch(url, init) {
             // GitHub answers only requests that name a user agent, which a Worker does not do by itself.
             const headers = new Headers(init?.headers);
@@ -101,12 +142,12 @@ async function link(spec: LinkSpec & {result?: boolean; pin?: boolean}, engine: 
     if (isEmptySpec(spec)) throw new ApiError(400, 'Name a source: gh, gist or files.');
     const {result, pin, ...wanted} = spec;
     if (pin && wanted.gh) {
-        const pinned = await resolveSource(engine.fetch, parseGithubRef(wanted.gh), wanted.entry);
+        const pinned = await resolveSource(engine.fetch, parseGithubRef(wanted.gh), wanted.entry, git);
         wanted.gh = `${pinned.source.owner}/${pinned.source.repo}@${pinned.commit}${pinned.source.subdir ? `:${pinned.source.subdir}` : ''}`;
         wanted.entry = pinned.entry;
         const against = baseSource(spec);
         if (against) {
-            const base = await resolveSource(engine.fetch, parseGithubRef(against), undefined);
+            const base = await resolveSource(engine.fetch, parseGithubRef(against), undefined, git);
             wanted.base = `${base.source.owner}/${base.source.repo}@${base.commit}`;
         }
     }
@@ -121,14 +162,20 @@ const ENDPOINTS = {
     },
 };
 
-async function api(request: Request, env: Env, url: URL): Promise<Response> {
+async function api(request: Request, env: Env, url: URL, context: ExecutionContext): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: CORS});
     if (request.method !== 'GET' && request.method !== 'POST') return json({error: 'Use GET or POST.'}, 405);
     const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
-    if (env.API_LIMIT && !(await env.API_LIMIT.limit({key: address})).success) {
+    const reader = url.pathname.startsWith('/api/github/');
+    const limit = reader ? env.GITHUB_LIMIT : env.API_LIMIT;
+    if (limit && !(await limit.limit({key: address})).success) {
         return json({error: 'Too many requests. Try again in a minute.'}, 429);
     }
     try {
+        if (reader) {
+            if (request.method !== 'GET') throw new ApiError(405, 'Use GET.');
+            return await github(request, url, context);
+        }
         const path = url.pathname.replace(/\/$/, '');
         if (path === '/api') return json(ENDPOINTS);
         const engine = engineEnv(env, url.origin, tokenOf(request, env));
@@ -163,9 +210,9 @@ export function linkForPath(pathname: string): string | undefined {
 }
 
 export default {
-    async fetch(request: Request, env: Env): Promise<Response> {
+    async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
-        if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return api(request, env, url);
+        if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return api(request, env, url, context);
         const target = request.method === 'GET' ? linkForPath(url.pathname) : undefined;
         return target ? Response.redirect(url.origin + target, 302) : env.ASSETS.fetch(request);
     },
