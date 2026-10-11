@@ -40,7 +40,8 @@ async function cachedFetch(url: string, init?: RequestInit): Promise<Response> {
 
 function runScript(base: string, request: ScriptRequest, streams: ScriptIo): Promise<ScriptResult> {
     return new Promise((resolve, reject) => {
-        const worker = new Worker(`${base}rt/node-runner.js`, {type: 'module', name: request.script});
+        // A URL of its own, for the same reason as in client.ts: two engines may run a script at once.
+        const worker = new Worker(`${base}rt/node-runner.js?run=${crypto.randomUUID()}`, {type: 'module', name: request.script});
         const finish = (settle: () => void) => {
             clearTimeout(timer);
             worker.terminate();

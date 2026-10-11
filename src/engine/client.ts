@@ -1,4 +1,5 @@
 import type {EngineCalls, Reply, Request} from './protocol.ts';
+import workerUrl from './worker.ts?worker&url';
 
 export interface EngineEvents {
     step?(name: string, detail: string | undefined): void;
@@ -9,9 +10,16 @@ export type Engine = {[K in keyof EngineCalls]: (...args: Parameters<EngineCalls
     events: EngineEvents;
 };
 
-/** Starts the engine worker and returns its calls as promises. */
+let engines = 0;
+
+/**
+ * Starts an engine worker and returns its calls as promises. Each worker gets a URL of its own.
+ * WebKit puts only the first of several module workers that start at once from one URL under the
+ * service worker, and a link that compares two refs starts two engines.
+ */
 export function createEngine(): Engine {
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), {type: 'module', name: 'engine'});
+    const url = `${workerUrl}${workerUrl.includes('?') ? '&' : '?'}engine=${++engines}`;
+    const worker = new Worker(url, {type: 'module', name: 'engine'});
     const pending = new Map<number, {resolve(value: unknown): void; reject(error: Error): void}>();
     const events: EngineEvents = {};
     let nextId = 0;
