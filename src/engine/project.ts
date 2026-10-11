@@ -17,6 +17,8 @@ export interface Env {
     wasm(): Promise<WasmModule>;
     /** Reads refs and file lists from GitHub without its API, where the environment can. */
     git?: GitReader;
+    /** The most source that one program may have, by `sourceCost`, where memory is short. */
+    sourceBudget?: number;
     /** Puts files where the preview and script runs load them from. Only a browser has it. */
     publish?(id: string, files: Map<string, {body: FileData; type: string}>): Promise<void>;
     /** Runs a compiled script in a worker with the Node shims. Only a browser has it. */

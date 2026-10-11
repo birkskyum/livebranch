@@ -137,3 +137,27 @@ test('an adapter for another repository with the same package name is not used',
     assert.deepEqual((await openProject({files}, withAdapter)).config.files, {});
     assert.equal((await openProject({files: {'package.json': files['package.json']}, adapter: 'some-lib'}, withAdapter)).entry, '/demo.ts');
 });
+
+test('stops at the source budget of the environment', async () => {
+    const {typeCheck} = await import('./types.ts');
+    const {TooLargeError} = await import('./tsc.ts');
+    const files = {
+        'index.html': '<script type="module" src="./main.ts"></script>',
+        'main.ts': 'import {pad} from \'./pad.ts\';\nimport type {Wide} from \'./wide\';\nconst wide: Wide = pad;\nconsole.log(wide);\n',
+        'pad.ts': `export const pad = '${'x'.repeat(600)}';\n`,
+        'wide.d.ts': `export type Wide = string;\n// ${'x'.repeat(2000)}\n`,
+    };
+    const sources = files['main.ts'].length + files['pad.ts'].length;
+    // A declaration file counts for a quarter of its length.
+    const program = sources + files['wide.d.ts'].length / 4;
+    const run = async (sourceBudget: number) => {
+        const limited = {...env, sourceBudget};
+        const project = await openProject({files}, limited);
+        const {problems} = await build(project, limited);
+        return [...problems, ...await typeCheck(project, limited, new Set(['/main.ts']))];
+    };
+
+    assert.deepEqual(await run(program), []);
+    await assert.rejects(run(program - 1), TooLargeError);
+    await assert.rejects(run(sources - 1), TooLargeError);
+});

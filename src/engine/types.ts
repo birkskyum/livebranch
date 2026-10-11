@@ -139,8 +139,8 @@ export async function typeCheck(project: Project, env: Env, own: Set<string>): P
     const [module] = await Promise.all([env.wasm(), installTypes(project, env)]);
     for (const [path, code] of page.inline) vfs.write(path, code);
     try {
-        await loadClosure(project, roots, resolveContext(project, env), true);
-        const options = {extra: new Map([[TSCONFIG, tsconfig(project, roots)]]), json: true};
+        await loadClosure(project, roots, resolveContext(project, env), true, env.sourceBudget);
+        const options = {extra: new Map([[TSCONFIG, tsconfig(project, roots)]]), json: true, budget: env.sourceBudget};
         let run = await tsc(module, vfs, ['-p', TSCONFIG], options);
         for (let round = 0; run.misses.size && round < 8; round++) {
             await vfs.load(run.misses);

@@ -20,6 +20,8 @@
         // The GitHub reader is asked up to four times per opened link and its answers are cached.
         {"name": "GITHUB_LIMIT", "namespace_id": "1003", "simple": {"limit": 300, "period": 60}},
     ],
+    // A check within the API's source budget takes a few seconds.
+    "limits": {"cpu_ms": 15000},
     // A Worker may not compile WebAssembly from bytes, which the default build of the lexer does.
     "alias": {"es-module-lexer": "es-module-lexer/js"},
 }

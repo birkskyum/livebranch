@@ -1,4 +1,5 @@
 import {runTscAsync, type Diagnostic, type HostFileSystem, type WasmModule} from '../vendor/tsc-rs/core.js';
+import {isSourcePath} from './resolve.ts';
 import type {Vfs} from './vfs.ts';
 
 export type {Diagnostic, WasmModule};
@@ -26,16 +27,35 @@ export interface TscOptions {
     writeToProject?: boolean;
     /** Project files for which this returns false do not exist for the run. */
     visible?(path: string): boolean;
+    /** The most source, by `sourceCost`, that the run may read. Past it the run stops with a `TooLargeError`. */
+    budget?: number;
+}
+
+/** A program that is larger than the environment has memory for. */
+export class TooLargeError extends Error {
+    constructor() {
+        super('The program is too large to compile here.');
+    }
+}
+
+/**
+ * What a file adds to a program, in characters of source. The compiler's memory grows with it. A
+ * declaration file has no bodies to compile and counts for a quarter. Other files count for nothing.
+ */
+export function sourceCost(path: string, length: number): number {
+    if (isSourcePath(path)) return length;
+    return /\.d\.[cm]?ts$/.test(path) ? length / 4 : 0;
 }
 
 const fileDecoder = new TextDecoder('utf-8', {ignoreBOM: true});
 
 /** Runs tsc-rs once over the project's files. The compiler cannot wait for a fetch, so a file that is not loaded is a miss. */
 export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options: TscOptions = {}): Promise<TscRun> {
-    const {cwd = '/', extra = new Map<string, string>(), json = false, writeToProject = false, visible = () => true} = options;
+    const {cwd = '/', extra = new Map<string, string>(), json = false, writeToProject = false, visible = () => true, budget = Infinity} = options;
     const written = new Map<string, string>();
     const read = new Set<string>();
     const misses = new Set<string>();
+    let spent = 0;
     const stdout: Uint8Array[] = [];
     const stderr: Uint8Array[] = [];
     const extraDirs = new Set<string>();
@@ -49,8 +69,13 @@ export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options:
             if (own !== undefined) return own;
             if (!visible(path)) return undefined;
             const data = vfs.read(path);
-            if (data !== undefined) read.add(path);
-            else if (vfs.remote.has(path)) misses.add(path);
+            if (data === undefined) {
+                if (vfs.remote.has(path)) misses.add(path);
+            } else if (!read.has(path)) {
+                read.add(path);
+                spent += sourceCost(path, data.length);
+                if (spent > budget) throw new TooLargeError();
+            }
             return data;
         },
         stat(path) {

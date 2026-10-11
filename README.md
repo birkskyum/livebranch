@@ -131,6 +131,11 @@ minute to the link and check endpoints, and 300 to the GitHub reader.
 Setup commands do not run in the Worker or under Node yet. A project that has them is still
 checked, but problems are then reported only for the page and the link's files.
 
+The Worker checks a program of up to 1.4 MB of source (`SOURCE_BUDGET` in `worker/index.ts`), where
+a declaration file counts for a quarter of its size. A larger one gets status 422 right away,
+because the compiler would need more memory than a Worker has: about 200 MB for maplibre-gl-js.
+The command line and a browser have no such limit.
+
 ## For agents and tests
 
 A link can be made without a browser and without an account. `/api/check` and `livebranch check` answer
@@ -168,8 +173,8 @@ The script needs Rust with the `wasm32-wasip1` target. The module here is built 
   has no hourly allowance. A browser may not ask that endpoint, so the Worker does it for the page
   at `/api/github/*`. Without the Worker (the dev server, a static host) the page asks GitHub's
   API, where an anonymous address gets 60 requests an hour. Gists always go through the API.
-- A check of a large project in the Worker makes a few hundred requests to GitHub and npm, which
-  needs a paid Workers plan on Cloudflare. Nothing is cached there yet.
+- A check in the Worker of a project near its size limit makes a few hundred requests to GitHub
+  and npm, which needs a paid Workers plan on Cloudflare. Nothing is cached there yet.
 - Setup scripts get a small part of Node. A script that needs more, or that downloads from a
   host without CORS, needs its output listed under `prebuilt`.
 - Packages from the CDN are bundled per package, so two copies of a shared dependency can load.

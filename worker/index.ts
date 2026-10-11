@@ -7,6 +7,7 @@ import {openProject, type Env as EngineEnv} from '../src/engine/project.ts';
 import {listTree, resolveRef} from '../src/engine/sources/git.ts';
 import {resolveSource, type GitReader} from '../src/engine/sources/github.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
+import {TooLargeError} from '../src/engine/tsc.ts';
 
 interface Env {
     ASSETS: {fetch(request: Request): Promise<Response>};
@@ -19,6 +20,13 @@ interface Env {
 }
 
 const MAX_BODY_BYTES = 1_000_000;
+/**
+ * The most source that a check compiles here, in characters. A Worker has little memory. Checks
+ * for which the compiler took 120 to 135 MB went through: maplibre-style-spec with the types of
+ * its dependencies, and 0.9 MB of dense code, which is about what a request body can hold.
+ * maplibre-gl-js, with 2.8 MB of source and 200 MB, ran for 30 seconds and then failed.
+ */
+const SOURCE_BUDGET = 1_400_000;
 const CORS = {
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'authorization, content-type',
@@ -96,6 +104,7 @@ function engineEnv(env: Env, origin: string, token: string | undefined): EngineE
         },
         runtimeBase: `${origin}/`,
         wasm: async () => tscModule,
+        sourceBudget: SOURCE_BUDGET,
     };
 }
 
@@ -134,7 +143,12 @@ async function specOf(request: Request, url: URL): Promise<LinkSpec & {result?: 
 /** Compiles and type checks a project and reports its problems. */
 async function check(spec: LinkSpec, engine: EngineEnv): Promise<Response> {
     if (isEmptySpec(spec)) throw new ApiError(400, 'Name a source: gh, gist or files.');
-    return json(await checkProject(await openProject(spec, engine), engine));
+    try {
+        return json(await checkProject(await openProject(spec, engine), engine));
+    } catch (error) {
+        if (!(error instanceof TooLargeError)) throw error;
+        throw new ApiError(422, `This is too large to check on the server, which compiles up to ${SOURCE_BUDGET / 1e6} MB of source. Open the link in a browser instead. It runs the same check without that limit, and /llms.txt says how to read the result.`);
+    }
 }
 
 /** Makes the link for a spec. With `pin`, a branch or pull request becomes its commit. */
@@ -158,7 +172,7 @@ const ENDPOINTS = {
     docs: '/llms.txt',
     endpoints: {
         'POST /api/link': 'Makes a link. Body: {gh?, base?, entry?, gist?, adapter?, files?, result?, pin?}. Answers {url}.',
-        'POST /api/check': 'Compiles and type checks without a browser. Body: {gh?, entry?, gist?, adapter?, files?}. Answers {problems, ...}.',
+        'POST /api/check': `Compiles and type checks without a browser, up to ${SOURCE_BUDGET / 1e6} MB of source. Body: {gh?, entry?, gist?, adapter?, files?}. Answers {problems, ...}.`,
     },
 };
 

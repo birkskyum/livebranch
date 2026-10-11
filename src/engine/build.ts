@@ -4,7 +4,7 @@ import type {Env, Progress, Project} from './project.ts';
 import {parseJsonc} from './project.ts';
 import {isSourcePath, resolveSpecifier, scanImports, type ResolveContext} from './resolve.ts';
 import {assetModuleCode, assetModulePath, lexerReady, rewriteModule, type AssetModule} from './rewrite.ts';
-import {tsc, type Diagnostic, type TscOptions} from './tsc.ts';
+import {sourceCost, TooLargeError, tsc, type Diagnostic, type TscOptions} from './tsc.ts';
 import type {FileData} from './vfs.ts';
 
 export interface Output {
@@ -83,17 +83,23 @@ export function resolveContext(project: Project, env: Env, keep?: Set<string>): 
     };
 }
 
-/** Loads every file that the entries reach through imports, wave by wave, and returns the source files among them. */
-export async function loadClosure(project: Project, entries: string[], ctx: ResolveContext, withTypes = false): Promise<Set<string>> {
+/**
+ * Loads every file that the entries reach through imports, wave by wave, and returns the source
+ * files among them. Past `budget` of source it stops with a `TooLargeError`, before the rest is fetched.
+ */
+export async function loadClosure(project: Project, entries: string[], ctx: ResolveContext, withTypes = false, budget = Infinity): Promise<Set<string>> {
     const {vfs} = project;
     const seen = new Set<string>(entries);
     let wave = entries;
+    let spent = 0;
     while (wave.length) {
         await vfs.load(wave);
         const next: string[] = [];
         for (const file of wave) {
             const code = isSourcePath(file) ? vfs.readText(file) : undefined;
             if (code === undefined) continue;
+            spent += sourceCost(file, code.length);
+            if (spent > budget) throw new TooLargeError();
             const {imports, urls} = scanImports(code, withTypes);
             for (const specifier of [...imports, ...urls]) {
                 const resolved = resolveSpecifier(specifier, file, ctx);
@@ -216,13 +222,14 @@ export async function compile(project: Project, env: Env, entries: string[], pro
     // compiler runs again.
     for (let round = 0; round < 4; round++) {
         progress('fetch', 'sources');
-        const closure = await loadClosure(project, roots, ctx);
+        const closure = await loadClosure(project, roots, ctx, false, env.sourceBudget);
         const files = [...closure].filter(path => isSourcePath(path) && vfs.isFile(path));
         progress('compile', `${files.length} modules`);
         const options: TscOptions = {
             extra: new Map([[TSCONFIG, tsconfig(project, files)]]),
             json: true,
             visible: path => !isSourcePath(path) || closure.has(path),
+            budget: env.sourceBudget,
         };
         let run = await tsc(module, vfs, ['-p', TSCONFIG], options);
         for (let fetched = 0; run.misses.size && fetched < 8; fetched++) {

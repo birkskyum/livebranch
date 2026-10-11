@@ -74,9 +74,10 @@ curl -X POST https://livebranch.dev/api/check -H 'content-type: application/json
 
 It compiles and type checks, and answers `{"problems": [{"file", "line", "column", "code", "category", "text"}], "modules", "entry", "skippedSetup"}`. It takes the same body as `/api/link`.
 
-Two limits apply to checks on the server:
+Three limits apply to checks on the server:
 
 - Branches, tags, pull requests and full commit hashes need no token. Only an abbreviated commit hash or a gist is read through GitHub's API, and for those the server needs a token of yours as `Authorization: Bearer <token>`, since it shares the anonymous limit with many others. A token without any permission is enough. It is passed on to api.github.com only and is not kept.
+- The server compiles up to 1.4 MB of source, which covers small and mid-size libraries. For a larger project, maplibre-gl-js among them, it answers with status 422 in a second or two. A browser has no such limit.
 - Setup commands of a project (code generators) do not run on the server. For such a project (`skippedSetup` is not empty) only problems in the demo's own files are reported. A browser runs the setup and gives the full result.
 
 ## Reading the result in a browser
