@@ -15,7 +15,8 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "check:types": "tsc-rs --noEmit",
     "build:wasm": "scripts/build-wasm.sh",
-    "livebranch": "node bin/livebranch.ts"
+    "livebranch": "node bin/livebranch.ts",
+    "check:browsers": "node scripts/check-browsers.mjs"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.5",
+    "playwright": "1.64.0",
     "tailwindcss": "^4.3.3",
     "tsc-rs": "^0.2.0",
     "typescript": "^7.0.2",

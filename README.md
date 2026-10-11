@@ -150,6 +150,7 @@ pnpm install
 pnpm dev            # the app, with the engine in a worker
 pnpm test           # the engine under Node
 pnpm check:types    # with tsc-rs
+pnpm check:browsers # the live site in Firefox, WebKit and Chromium (needs Playwright's browsers)
 pnpm build          # static files in dist, for any host that serves over HTTPS
 pnpm exec wrangler dev   # the built app and the API in a local workerd
 ```
