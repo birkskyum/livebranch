@@ -1,5 +1,26 @@
 // Runs first in the preview page. Reports its console output and uncaught errors to the app.
 (() => {
+    // WebKit loads the imports of a module worker through the service worker only for the first of
+    // several workers that start at the same moment from one URL. The others fail to load. A
+    // parameter of its own makes each worker's URL different, and the service worker ignores it.
+    const NativeWorker = window.Worker;
+    let workers = 0;
+    window.Worker = class extends NativeWorker {
+        constructor(url, options) {
+            let target = url;
+            try {
+                const parsed = new URL(url, location.href);
+                if (options?.type === 'module' && parsed.origin === location.origin) {
+                    parsed.searchParams.set('livebranch-worker', String(++workers));
+                    target = parsed;
+                }
+            } catch {
+                // The browser reports a URL that does not parse.
+            }
+            super(target, options);
+        }
+    };
+
     if (window.parent === window) return;
     const send = (level, args) => {
         try {
