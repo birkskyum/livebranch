@@ -1,5 +1,5 @@
 import {normalize} from './path.ts';
-import {fetchAdapter, readConfig} from './adapters.ts';
+import {adapterFits, fetchAdapter, readConfig} from './adapters.ts';
 import {isSourcePath} from './resolve.ts';
 import {fetchGist, githubSource, resolveSource, type Fetch} from './sources/github.ts';
 import {parseGithubRef, type ProjectConfig, type LinkSpec} from './spec.ts';
@@ -157,6 +157,7 @@ export async function openProject(spec: LinkSpec, env: Env, progress: Progress =
     let label = 'inline';
     let commit: string | undefined;
     let subdir = '';
+    let repository: string | undefined;
 
     if (local) {
         label = local.label;
@@ -169,6 +170,7 @@ export async function openProject(spec: LinkSpec, env: Env, progress: Progress =
         commit = resolved.commit;
         if (source.ref !== wanted.ref) spec = {...spec, gh: `${source.owner}/${source.repo}@${source.ref}`, entry: resolved.entry};
         subdir = source.subdir;
+        repository = `${source.owner}/${source.repo}`;
         const pull = /^pull\/(\d+)\/head$/.exec(source.ref);
         label = `${source.owner}/${source.repo}${pull ? `#${pull[1]}` : ''}@${commit.slice(0, 7)}${subdir ? `/${subdir}` : ''}`;
         vfs.source = githubSource(env.fetch, source, commit);
@@ -204,8 +206,10 @@ export async function openProject(spec: LinkSpec, env: Env, progress: Progress =
 
     // The project's own config wins over its adapter, field by field.
     const adapterName: string | undefined = spec.adapter === 'none' ? undefined : spec.adapter ?? packageJson.name;
-    const adapter = adapterName ? await fetchAdapter(env.fetch, adapterName) : undefined;
-    if (spec.adapter && spec.adapter !== 'none' && !adapter) throw new Error(`There is no adapter named ${spec.adapter}.`);
+    const found = adapterName ? await fetchAdapter(env.fetch, adapterName) : undefined;
+    if (spec.adapter && spec.adapter !== 'none' && !found) throw new Error(`There is no adapter named ${spec.adapter}.`);
+    // An adapter that the link names is used as it is. One found by package name has to fit.
+    const adapter = found && (spec.adapter || adapterFits(found, repository, packageJson)) ? found : undefined;
     const own = readConfig(readJson(vfs, '/livebranch.json') ?? readJson(vfs, '/.github/livebranch.json'));
     const config: ProjectConfig = {
         ...adapter,

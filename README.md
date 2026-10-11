@@ -66,7 +66,8 @@ any GitHub URL of a repository, a branch, a pull request, a commit or an example
 A project says how it runs in a `livebranch.json`, at its root or in `.github`. A project without
 one gets its adapter, which is the same kind of file kept in
 [livebranch-adapters](https://github.com/birkskyum/livebranch-adapters) under the `name` of the
-project's package.json. Anyone can add an adapter there. The project's own file wins over its
+project's package.json. An adapter names the repository it is for, and applies to that repository
+and to projects whose package.json points at it, which forks do. Anyone can add an adapter there. The project's own file wins over its
 adapter, field by field. In these files a long text (`template`, a value of `files`) may be an
 array of lines.
 

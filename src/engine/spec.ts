@@ -30,6 +30,11 @@ export interface ProjectConfig {
     /** Extra files, written when the project does not have them. */
     files?: Record<string, string>;
     /**
+     * In an adapter, the GitHub repository it is for, as `owner/repo`. The adapter applies to that
+     * repository and to projects whose package.json names it, which forks do.
+     */
+    repository?: string;
+    /**
      * The page for an entry that is a script instead of a page. `<!--entry-->` marks where the
      * script goes.
      */

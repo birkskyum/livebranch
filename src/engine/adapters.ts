@@ -47,3 +47,22 @@ export async function fetchAdapter(fetch: Fetch, name: string): Promise<ProjectC
     }
     return undefined;
 }
+
+/** The `owner/repo` that the `repository` of a package.json names, in lower case. */
+function repositoryOf(packageJson: Record<string, any>): string | undefined {
+    const field: unknown = typeof packageJson.repository === 'string' ? packageJson.repository : packageJson.repository?.url;
+    if (typeof field !== 'string') return undefined;
+    const match = /(?:github\.com[/:]|^github:|^)([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(field.trim());
+    return match ? `${match[1]}/${match[2]}`.toLowerCase() : undefined;
+}
+
+/**
+ * Whether an adapter that was found by package name is meant for the project. Package names are
+ * not unique across GitHub, so an adapter says which repository it is for. A fork has another
+ * repository name, but its package.json still names the original.
+ */
+export function adapterFits(adapter: ProjectConfig, repository: string | undefined, packageJson: Record<string, any>): boolean {
+    const wanted = adapter.repository?.toLowerCase();
+    if (!wanted) return false;
+    return repository?.toLowerCase() === wanted || repositoryOf(packageJson) === wanted;
+}

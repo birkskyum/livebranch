@@ -111,14 +111,14 @@ test('a script entry runs in a page made from the template', async () => {
 });
 
 test('a project gets the adapter of its package name, and its own config wins', async () => {
-    const adapter = {about: 'x', entry: 'demo.ts', alias: {lib: './src/a.ts'}, template: ['<div id="map"></div>', '<!--entry-->'], files: {'demo.ts': ['import {a} from \'lib\';', 'console.log(a);']}};
+    const adapter = {about: 'x', repository: 'Some/Lib', entry: 'demo.ts', alias: {lib: './src/a.ts'}, template: ['<div id="map"></div>', '<!--entry-->'], files: {'demo.ts': ['import {a} from \'lib\';', 'console.log(a);']}};
     const asked: string[] = [];
     const withAdapter = nodeEnv('https://app.test/', async url => {
         asked.push(url);
         return url.endsWith('/adapters/some-lib.json') ? Response.json(adapter) : new Response('', {status: 404});
     });
     const project = await openProject({
-        files: {'package.json': '{"name": "some-lib"}', 'src/a.ts': 'export const a = 1;\n', '.github/livebranch.json': '{"alias": {"other": "./src/a.ts"}}'},
+        files: {'package.json': '{"name": "some-lib", "repository": {"url": "git+https://github.com/some/lib.git"}}', 'src/a.ts': 'export const a = 1;\n', '.github/livebranch.json': '{"alias": {"other": "./src/a.ts"}}'},
     }, withAdapter);
     assert.deepEqual(asked, ['https://raw.githubusercontent.com/birkskyum/livebranch-adapters/main/adapters/some-lib.json']);
     assert.equal(project.entry, '/demo.ts');
@@ -127,4 +127,13 @@ test('a project gets the adapter of its package name, and its own config wins', 
     assert.deepEqual(result.problems, []);
     assert.match(text(result.outputs.get('/index.html')?.body), /<div id="map"><\/div>\n<script type="module" src="\.\/demo\.ts"><\/script>/);
     assert.match(text(result.outputs.get('/demo.ts')?.body), /from '\.\/src\/a\.ts'/);
+});
+
+test('an adapter for another repository with the same package name is not used', async () => {
+    const adapter = {repository: 'some/lib', entry: 'demo.ts', files: {'demo.ts': 'console.log(1);'}};
+    const withAdapter = nodeEnv('https://app.test/', async url => url.endsWith('/adapters/some-lib.json') ? Response.json(adapter) : new Response('', {status: 404}));
+    const files = {'package.json': '{"name": "some-lib", "repository": "github:someone-else/unrelated"}', 'index.html': '<p>own page</p>'};
+    assert.equal((await openProject({files}, withAdapter)).entry, '/index.html');
+    assert.deepEqual((await openProject({files}, withAdapter)).config.files, {});
+    assert.equal((await openProject({files: {'package.json': files['package.json']}, adapter: 'some-lib'}, withAdapter)).entry, '/demo.ts');
 });
