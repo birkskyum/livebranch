@@ -88,3 +88,23 @@ test('type checks the page against the project through an alias', async () => {
     const problems = await typeCheck(project, env, new Set(['/index.html']));
     assert.deepEqual(problems.map(found => `${found.file}:${found.line} TS${found.code}`), ['/index.html:4 TS2345']);
 });
+
+test('a script entry runs in a page made from the template', async () => {
+    const project = await openProject({
+        files: {
+            'demo.ts': 'const n: number = 1;\ndocument.title = String(n);\n',
+            'livebranch.json': '{"template": "<!doctype html><div id=\\"map\\"></div><!--entry-->"}',
+        },
+    }, env);
+    assert.equal(project.entry, '/demo.ts');
+    const result = await build(project, env);
+    assert.deepEqual(result.problems, []);
+    assert.equal(result.entry, '/index.html');
+    assert.match(text(result.outputs.get('/index.html')?.body), /<div id="map"><\/div><script type="module" src="\.\/demo\.ts"><\/script>/);
+    assert.match(text(result.outputs.get('/demo.ts')?.body), /^const n = 1;\ndocument.title = String\(n\);\n/);
+
+    const {typeCheck} = await import('./types.ts');
+    project.vfs.write('/demo.ts', 'const n: number = "one";\n');
+    const problems = await typeCheck(project, env, new Set(['/demo.ts']));
+    assert.deepEqual(problems.map(found => `${found.file}:${found.line} TS${found.code}`), ['/demo.ts:1 TS2322']);
+});

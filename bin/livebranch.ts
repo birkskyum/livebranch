@@ -9,15 +9,18 @@ import {checkProject} from '../src/engine/check.ts';
 import {nodeEnv} from '../src/engine/node-env.ts';
 import {openProject, type LocalSource} from '../src/engine/project.ts';
 import {resolveSource} from '../src/engine/sources/github.ts';
-import {encodeSpec, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
+import {baseSource, encodeSpec, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
 import {isBinaryPath} from '../src/engine/vfs.ts';
 
 const USAGE = `usage:
-  livebranch link  [--gh owner/repo@ref] [--gist id] [--entry page] [--preset name] [--result] [--follow] [--base url] [file ...]
-  livebranch check [--gh owner/repo@ref | --dir path] [--gist id] [--entry page] [--preset name] [--json] [file ...]
+  livebranch link  [--gh owner/repo@ref] [--base ref] [--gist id] [--entry file] [--preset name] [--result] [--follow] [--site url] [file ...]
+  livebranch check [--gh owner/repo@ref | --dir path] [--gist id] [--entry file] [--preset name] [--json] [file ...]
 
 A file is a path, or name=path to give it another name in the project. Files are laid over the
 GitHub source, the gist or the directory.
+
+--base names a second ref (main, a tag, or owner/repo@ref) to show next to the first, running the
+same page. A file may be a page (demo.html) or a script (demo.ts), which runs in the project's page.
 
 --gh takes owner/repo@branch, owner/repo@pull/123, or a github.com URL of a branch, a commit, a
 pull request or a file.
@@ -28,17 +31,18 @@ check  compiles and type checks the project under Node and prints the problems. 
        the project do not run under Node, so check a project that has them from a directory
        where they have run (--dir), or open the link in a browser.
 
-LIVEBRANCH_BASE sets the default for --base.`;
+LIVEBRANCH_BASE sets the default for --site.`;
 
 const {values, positionals} = parseArgs({
     allowPositionals: true,
     options: {
         gh: {type: 'string'},
+        base: {type: 'string'},
         gist: {type: 'string'},
         dir: {type: 'string'},
         entry: {type: 'string'},
         preset: {type: 'string'},
-        base: {type: 'string', default: process.env.LIVEBRANCH_BASE ?? 'https://livebranch.dev/'},
+        site: {type: 'string', default: process.env.LIVEBRANCH_BASE ?? 'https://livebranch.dev/'},
         result: {type: 'boolean', default: false},
         follow: {type: 'boolean', default: false},
         json: {type: 'boolean', default: false},
@@ -59,7 +63,7 @@ async function overlay(): Promise<Record<string, string>> {
 
 async function spec(): Promise<LinkSpec> {
     const source = values.gh ? normalizeGithubSource(values.gh) : undefined;
-    return {gh: source?.gh, gist: values.gist, entry: values.entry ?? source?.entry, preset: values.preset, files: await overlay()};
+    return {gh: source?.gh, base: values.base, gist: values.gist, entry: values.entry ?? source?.entry, preset: values.preset, files: await overlay()};
 }
 
 function directorySource(dir: string): LocalSource {
@@ -93,9 +97,14 @@ if (values.help || !command) {
         const {source, commit, entry} = await resolveSource((url, init) => fetch(url, init), parseGithubRef(wanted.gh), wanted.entry);
         wanted.gh = `${source.owner}/${source.repo}@${commit}${source.subdir ? `:${source.subdir}` : ''}`;
         wanted.entry = entry;
+        const against = baseSource({gh: values.gh && normalizeGithubSource(values.gh).gh, base: wanted.base});
+        if (against) {
+            const pinned = await resolveSource((url, init) => fetch(url, init), parseGithubRef(against), undefined);
+            wanted.base = `${pinned.source.owner}/${pinned.source.repo}@${pinned.commit}`;
+        }
     }
-    const base = values.base.endsWith('/') ? values.base : `${values.base}/`;
-    console.log(`${base}#${values.result ? 'view=result&' : ''}${await encodeSpec(wanted)}`);
+    const site = values.site.endsWith('/') ? values.site : `${values.site}/`;
+    console.log(`${site}#${values.result ? 'view=result&' : ''}${await encodeSpec(wanted)}`);
 } else if (command === 'check') {
     const env = nodeEnv();
     const project = await openProject(await spec(), env, undefined, values.dir ? directorySource(values.dir) : undefined);

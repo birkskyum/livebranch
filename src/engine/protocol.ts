@@ -16,7 +16,10 @@ export interface SessionInfo {
     /** The GitHub source as the link should name it. A pasted URL may have needed sorting out. */
     gh: string | undefined;
     commit: string | undefined;
+    /** The page that the preview opens. */
     entry: string;
+    /** The file to show first: the page, or the script that the page was made for. */
+    file: string;
     problems: Problem[];
     steps: Step[];
     /** The time from opening to the published build. Steps overlap, so it is less than their sum. */

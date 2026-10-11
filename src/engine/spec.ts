@@ -10,6 +10,11 @@ export interface LinkSpec {
     entry?: string;
     /** A built-in config, or `none` to turn off detection by package name. */
     preset?: string;
+    /**
+     * A second ref to run the same page against, shown next to the first: a ref of the same
+     * repository (`main`) or a full source (`owner/repo@ref`).
+     */
+    base?: string;
 }
 
 /** `livebranch.json` at the project root, or a preset. */
@@ -24,6 +29,11 @@ export interface ProjectConfig {
     entries?: string[];
     /** Extra files, written when the project does not have them. */
     files?: Record<string, string>;
+    /**
+     * The page for an entry that is a script instead of a page. `<!--entry-->` marks where the
+     * script goes.
+     */
+    template?: string;
     /** Where bare imports of npm packages load from. */
     cdn?: 'esm.sh' | 'jsdelivr';
     /** Generated files that are taken from the project's published npm package. */
@@ -90,7 +100,16 @@ export function normalizeGithubSource(text: string): {gh: string; entry?: string
     return {gh: base};
 }
 
-const PARAMS = ['gh', 'gist', 'entry', 'preset'] as const;
+/** The full source of the ref that a link compares against, if it names one. */
+export function baseSource(spec: LinkSpec): string | undefined {
+    if (!spec.base) return undefined;
+    if (/^(?:https?:\/\/)?github\.com\//.test(spec.base) || /^[^/@\s]+\/[^/@\s]+@/.test(spec.base)) return normalizeGithubSource(spec.base).gh;
+    if (!spec.gh) return undefined;
+    const {owner, repo} = parseGithubRef(spec.gh);
+    return `${owner}/${repo}@${spec.base}`;
+}
+
+const PARAMS = ['gh', 'base', 'gist', 'entry', 'preset'] as const;
 
 function toBase64Url(bytes: Uint8Array): string {
     let binary = '';

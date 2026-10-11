@@ -1,6 +1,6 @@
 import type {ProjectConfig} from './spec.ts';
 
-const MAPLIBRE_PAGE = `<!doctype html>
+const MAPLIBRE_TEMPLATE = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -11,8 +11,12 @@ const MAPLIBRE_PAGE = `<!doctype html>
 </head>
 <body>
 <div id="map"></div>
-<script type="module">
-import * as maplibregl from 'maplibre-gl';
+<!--entry-->
+</body>
+</html>
+`;
+
+const MAPLIBRE_DEMO = `import * as maplibregl from 'maplibre-gl';
 
 const map = new maplibregl.Map({
     container: 'map',
@@ -22,9 +26,6 @@ const map = new maplibregl.Map({
     hash: true,
 });
 map.addControl(new maplibregl.NavigationControl());
-</script>
-</body>
-</html>
 `;
 
 const MAPLIBRE_BUNDLE = 'export * from \'../src/index.ts\';\n';
@@ -56,7 +57,10 @@ export const presets: Record<string, ProjectConfig> = {
             'src/util/maplibre-gl-worker.mjs': 'import \'../source/worker.ts\';\n',
             'dist/maplibre-gl.mjs': MAPLIBRE_BUNDLE,
             'dist/maplibre-gl-dev.mjs': MAPLIBRE_BUNDLE,
-            'index.html': MAPLIBRE_PAGE,
+            'demo.ts': MAPLIBRE_DEMO,
         },
+        // A demo is a script. Its page has the stylesheet and a full-size `#map` to put the map in.
+        entry: 'demo.ts',
+        template: MAPLIBRE_TEMPLATE,
     },
 };

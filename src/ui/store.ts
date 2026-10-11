@@ -2,7 +2,7 @@ import {createStore, produce} from 'solid-js/store';
 import {createEngine, type Engine} from '../engine/client.ts';
 import type {Problem} from '../engine/build.ts';
 import type {SessionInfo} from '../engine/protocol.ts';
-import {decodeSpec, encodeSpec, isEmptySpec, type LinkSpec} from '../engine/spec.ts';
+import {baseSource, decodeSpec, encodeSpec, isEmptySpec, type LinkSpec} from '../engine/spec.ts';
 
 export type Phase = 'landing' | 'loading' | 'ready' | 'failed';
 export type Tab = 'problems' | 'console' | 'terminal' | 'build';
@@ -20,6 +20,9 @@ export interface State {
     step: string;
     error: string;
     session: SessionInfo | undefined;
+    /** The same page built against the ref that the link compares with. */
+    base: SessionInfo | undefined;
+    baseError: string;
     console: ConsoleEntry[];
     /** Counts reloads of the preview. */
     runs: number;
@@ -41,6 +44,8 @@ export const [state, setState] = createStore<State>({
     step: '',
     error: '',
     session: undefined,
+    base: undefined,
+    baseError: '',
     console: [],
     runs: 0,
     tab: 'console',
@@ -56,6 +61,7 @@ export const [state, setState] = createStore<State>({
 export const base = new URL('./', location.href.split(/[?#]/)[0]).href;
 
 let engine: Engine | undefined;
+let baseEngine: Engine | undefined;
 
 export function getEngine(): Engine {
     if (!engine) {
@@ -63,6 +69,12 @@ export function getEngine(): Engine {
         engine.events.step = (name, detail) => setState('step', detail ? `${name}: ${detail}` : name);
     }
     return engine;
+}
+
+/** A second engine, for the ref that a link compares with. The two build at the same time. */
+function getBaseEngine(): Engine {
+    baseEngine ??= createEngine();
+    return baseEngine;
 }
 
 /** Registers the service worker that serves previews, and waits until it controls this page. */
@@ -91,13 +103,13 @@ function finish(session: SessionInfo): void {
         draft.session = session;
         if (session.gh && session.gh !== draft.spec.gh) {
             draft.spec.gh = session.gh;
-            if (draft.spec.entry) draft.spec.entry = session.entry.slice(1);
+            if (draft.spec.entry) draft.spec.entry = session.file.slice(1);
         }
         draft.phase = 'ready';
         draft.building = false;
         draft.console = [];
         draft.runs++;
-        draft.file ??= session.entry;
+        draft.file ??= session.file;
         draft.typeProblems = [];
         draft.checking = true;
         if (errors) draft.tab = 'problems';
@@ -132,7 +144,7 @@ export async function openFromLocation(): Promise<void> {
     const params = new URLSearchParams(location.search);
     for (const [key, value] of new URLSearchParams(location.hash.slice(1))) params.set(key, value);
     const spec = await decodeSpec(location.search, location.hash);
-    setState({spec, resultOnly: params.get('view') === 'result', edits: {}, file: undefined, session: undefined, error: ''});
+    setState({spec, resultOnly: params.get('view') === 'result', edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', error: ''});
     if (isEmptySpec(spec)) {
         setState('phase', 'landing');
         return;
@@ -141,8 +153,16 @@ export async function openFromLocation(): Promise<void> {
     try {
         await ensureServiceWorker();
         sessionStorage.removeItem('livebranch-reloaded');
-        const session = await getEngine().open(spec, {base, cache: !params.has('nocache') && !import.meta.env.DEV});
+        const options = {base, cache: !params.has('nocache') && !import.meta.env.DEV};
+        const against = baseSource(spec);
+        const baseSession = against === undefined ? undefined : getBaseEngine().open({...spec, gh: against, base: undefined}, options).catch((error: unknown) => {
+            if (opening === openings) setState('baseError', error instanceof Error ? error.message : String(error));
+            return undefined;
+        });
+        const session = await getEngine().open(spec, options);
         if (opening === openings) finish(session);
+        const built = await baseSession;
+        if (opening === openings) setState('base', built);
     } catch (error) {
         if (opening === openings) setState({phase: 'failed', error: error instanceof Error ? error.message : String(error)});
     }
@@ -157,7 +177,13 @@ export function edit(path: string, text: string): void {
     editTimer = setTimeout(async () => {
         setState('building', true);
         try {
-            finish(await getEngine().update({...state.edits}));
+            const comparing = state.base !== undefined;
+            const [session, built] = await Promise.all([
+                getEngine().update({...state.edits}),
+                comparing ? getBaseEngine().update({...state.edits}) : undefined,
+            ]);
+            finish(session);
+            if (comparing) setState('base', built);
         } catch (error) {
             setState({building: false, error: error instanceof Error ? error.message : String(error)});
         }

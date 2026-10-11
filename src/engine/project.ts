@@ -1,5 +1,6 @@
 import {normalize} from './path.ts';
 import {presets} from './presets.ts';
+import {isSourcePath} from './resolve.ts';
 import {fetchGist, githubSource, resolveSource, type Fetch} from './sources/github.ts';
 import {parseGithubRef, type ProjectConfig, type LinkSpec} from './spec.ts';
 import type {WasmModule} from './tsc.ts';
@@ -130,14 +131,23 @@ function pathAliases(tsconfig: any): Record<string, string> {
     return alias;
 }
 
+const DEMO_NAMES = ['/demo.ts', '/demo.tsx', '/index.ts', '/index.tsx', '/main.ts', '/main.tsx'];
+
+/**
+ * The page to open, or the script to run in a page made from the template. What the link carries
+ * wins over what the project's config names.
+ */
 function pickEntry(spec: LinkSpec, config: ProjectConfig, overlay: string[], vfs: Vfs): string {
-    const named = spec.entry ?? config.entry;
-    if (named) return normalize(`/${named}`);
+    if (spec.entry) return normalize(`/${spec.entry}`);
     const pages = overlay.filter(path => path.endsWith('.html'));
     const page = pages.find(path => path === '/index.html') ?? pages[0];
     if (page) return page;
+    const scripts = overlay.filter(isSourcePath);
+    const script = DEMO_NAMES.find(name => scripts.includes(name)) ?? (scripts.length === 1 ? scripts[0] : undefined);
+    if (script) return script;
+    if (config.entry) return normalize(`/${config.entry}`);
     if (vfs.isFile('/index.html')) return '/index.html';
-    throw new Error('The project has no HTML page to open. Add an index.html, or name a page with the entry parameter.');
+    throw new Error('The project has no page to open. Add an index.html or a demo.ts, or name one with the entry parameter.');
 }
 
 /** Lists the source, lays the gist and the link's files over it, and reads the project's config. */

@@ -146,6 +146,7 @@ async function buildAndPublish(steps: Step[], start: number): Promise<SessionInf
         gh: current.spec.gh,
         commit: current.commit,
         entry: result.entry,
+        file: current.entry,
         problems: [...opened!.setupProblems, ...result.problems],
         steps,
         ms: 0,

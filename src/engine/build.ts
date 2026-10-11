@@ -118,6 +118,8 @@ function tsconfig(project: Project, files: string[]): string {
     const compilerOptions: Record<string, unknown> = {
         module: 'esnext',
         moduleResolution: 'bundler',
+        // The browser loads every file as a module, also one without imports or exports.
+        moduleDetection: 'force',
         noEmit: false,
         emitDeclarationOnly: false,
         declaration: false,
@@ -259,8 +261,39 @@ export async function compile(project: Project, env: Env, entries: string[], pro
     return {modules, problems, sources};
 }
 
-export function pageEntries(project: Project, env: Env, html: string) {
-    const page = transformHtml(html, project.entry, `${env.runtimeBase}rt/preview.js`);
+const DEFAULT_TEMPLATE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>livebranch</title>
+<style>html, body { margin: 0; height: 100%; }</style>
+</head>
+<body>
+<!--entry-->
+</body>
+</html>
+`;
+
+/**
+ * The page that the preview opens. An entry that is a script gets a page made from the project's
+ * template, at the project root, with the script in it.
+ */
+export async function entryPage(project: Project): Promise<{path: string; html: string} | undefined> {
+    const {vfs, entry, config} = project;
+    await vfs.load([entry]);
+    if (!isSourcePath(entry)) {
+        const html = vfs.readText(entry);
+        return html === undefined ? undefined : {path: entry, html};
+    }
+    if (!vfs.isFile(entry)) return undefined;
+    const script = `<script type="module" src=".${entry}"></script>`;
+    const template = config.template?.includes('<!--entry-->') ? config.template : DEFAULT_TEMPLATE;
+    return {path: vfs.isFile('/index.html') ? '/livebranch.html' : '/index.html', html: template.replace('<!--entry-->', script)};
+}
+
+export function pageEntries(project: Project, env: Env, found: {path: string; html: string}) {
+    const page = transformHtml(found.html, found.path, `${env.runtimeBase}rt/preview.js`);
     const extra = (project.config.entries ?? []).map(path => `/${path.replace(/^\.?\//, '')}`);
     return {page, entries: [...page.entries, ...extra]};
 }
@@ -278,11 +311,9 @@ export function inPage(found: Problem, inlineLines: Map<string, number>): Proble
  * that the build finds the files loaded.
  */
 export async function warmUp(project: Project, env: Env): Promise<void> {
-    const {vfs, entry} = project;
-    await vfs.load([entry]);
-    const html = vfs.readText(entry);
-    if (html === undefined) return;
-    const {page, entries} = pageEntries(project, env, html);
+    const found = await entryPage(project);
+    if (!found) return;
+    const {page, entries} = pageEntries(project, env, found);
     const ctx = resolveContext(project, env, new Set(page.importMap));
     const seeds = entries.filter(path => !page.inline.has(path));
     for (const [path, code] of page.inline) {
@@ -296,11 +327,11 @@ export async function warmUp(project: Project, env: Env): Promise<void> {
 
 /** Builds the preview of the project's page: the page, its compiled modules and the project's other loaded files. */
 export async function build(project: Project, env: Env, progress: Progress = () => {}): Promise<BuildResult> {
-    const {vfs, entry} = project;
-    await vfs.load([entry]);
-    const html = vfs.readText(entry);
-    if (html === undefined) throw new Error(`Page not found: ${entry}`);
-    const {page, entries} = pageEntries(project, env, html);
+    const {vfs} = project;
+    const found = await entryPage(project);
+    if (!found) throw new Error(`Not found: ${project.entry}`);
+    const entry = found.path;
+    const {page, entries} = pageEntries(project, env, found);
     for (const [path, code] of page.inline) vfs.write(path, code);
 
     const compiled = await compile(project, env, entries, progress, new Set(page.importMap));

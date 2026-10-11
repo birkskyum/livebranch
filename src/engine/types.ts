@@ -1,4 +1,4 @@
-import {inPage, loadClosure, pageEntries, problem, resolveContext, type Problem} from './build.ts';
+import {entryPage, inPage, loadClosure, pageEntries, problem, resolveContext, type Problem} from './build.ts';
 import type {Env, Project} from './project.ts';
 import {parseJsonc} from './project.ts';
 import {isSourcePath} from './resolve.ts';
@@ -104,6 +104,7 @@ function tsconfig(project: Project, files: string[]): string {
             ...(hasBase ? {} : {target: 'es2022', strict: true, jsx: 'react-jsx', lib: ['esnext', 'dom', 'dom.iterable']}),
             module: 'esnext',
             moduleResolution: 'bundler',
+            moduleDetection: 'force',
             noEmit: true,
             declaration: false,
             isolatedDeclarations: false,
@@ -128,10 +129,10 @@ function tsconfig(project: Project, files: string[]): string {
  * rest of the project is the business of its own CI.
  */
 export async function typeCheck(project: Project, env: Env, own: Set<string>): Promise<Problem[]> {
-    const {vfs, entry} = project;
-    const html = vfs.readText(entry);
-    if (html === undefined) return [];
-    const {page, entries} = pageEntries(project, env, html);
+    const {vfs} = project;
+    const found = await entryPage(project);
+    if (!found) return [];
+    const {page, entries} = pageEntries(project, env, found);
     const roots = [...new Set([...entries, ...[...own].filter(isSourcePath)])].filter(path => page.inline.has(path) || vfs.isFile(path));
     if (!roots.length) return [];
 

@@ -17,9 +17,10 @@ Everything is in the fragment of the URL, so nothing is sent to a server.
 | Parameter | Meaning |
 | --- | --- |
 | `gh=owner/repo@ref` | The project. A branch, a tag or a commit. `owner/repo@pull/123` is the head of a pull request, also one from a fork. The URL of a branch, a commit, a pull request or a file on github.com works too. `owner/repo@ref:sub/dir` uses a directory of the repository as the project root. |
+| `base=ref` | A second ref to run the same page against, shown next to the first. A ref of the same repository (`main`, a tag) or a full `owner/repo@ref`. |
 | `gist=id` | Files of a gist, laid over the project. `id@revision` pins it. |
 | `code=...` | Files carried in the link itself (JSON, deflate, base64url), laid over everything else. |
-| `entry=path` | The HTML page to open. The default is the page among the link's files, or else `index.html`. |
+| `entry=path` | The page to open, or a script to run. The default is the page or the script among the link's files, or else what the project's config names. |
 | `preset=name` | A built-in config. `none` turns off the detection by package name. |
 | `view=result` | Show only the built page. |
 | `nocache` | Build again even when this browser has the build. |
@@ -28,6 +29,10 @@ A branch of maplibre-gl-js needs only `#gh=birkskyum/maplibre-gl-js@my-branch`, 
 only `#gh=maplibre/maplibre-gl-js@pull/8628`. Add `&entry=test/examples/3d-terrain.html` to open one
 of the repository's own example pages, as it is in that branch. A link that names a branch or a
 pull request shows its latest push. A link that names a commit never changes.
+
+A demo does not need a page. A link can carry a `demo.ts` alone, which runs in a page made from
+the project's template. For maplibre-gl-js that page has the stylesheet and a full-size `#map`.
+With `base=main` the same script runs against main and against the branch, side by side.
 
 A page may hold TypeScript in its inline `<script type="module">`. Imports of npm packages load
 from esm.sh, at the version that the project's `package-lock.json` or `package.json` names. An
@@ -63,7 +68,8 @@ A project can have a `livebranch.json` at its root. Projects that cannot carry o
 
 | Field | Meaning |
 | --- | --- |
-| `entry` | The HTML page to open. |
+| `entry` | The page to open, or the script to run. |
+| `template` | The page for an entry that is a script. `<!--entry-->` marks where the script goes. |
 | `setup` | Shell commands that run before the build. `node script.ts` runs the script in the browser. |
 | `alias` | Bare import specifiers that point at a project file or a URL. |
 | `entries` | Modules that nothing imports statically but the page loads, such as worker scripts. |
@@ -83,6 +89,9 @@ and `npm run` runs a script of package.json through the same shell.
 # A link for a page laid over a branch. The branch is pinned to its commit.
 node bin/livebranch.ts link --gh birkskyum/maplibre-gl-js@my-branch demo.html
 
+# A script against a branch and against main, side by side.
+node bin/livebranch.ts link --gh birkskyum/maplibre-gl-js@my-branch --base maplibre/maplibre-gl-js@main demo.ts
+
 # A link that follows a pull request, for the PR's own description.
 node bin/livebranch.ts link --follow --gh https://github.com/maplibre/maplibre-gl-js/pull/8628
 
@@ -91,7 +100,7 @@ node bin/livebranch.ts check --dir ~/repos/maplibre-gl-js demo.html
 node bin/livebranch.ts check --json demo.html helper.ts
 ```
 
-`LIVEBRANCH_BASE` or `--base` sets the URL of the deployed app for `link`. Setup commands do not run
+`LIVEBRANCH_BASE` or `--site` sets the URL of the app for `link`. The default is livebranch.dev. Setup commands do not run
 under Node, so `check` of a project that needs them wants a directory where they have run.
 
 ## Worker and HTTP API
