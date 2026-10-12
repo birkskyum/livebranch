@@ -206,7 +206,8 @@ const calls: {[K in keyof EngineCalls]: (...args: Parameters<EngineCalls[K]>) =>
                 await touch(current.id);
                 opened = {id: current.id, label: current.label, log: info.log, setupProblems: [], prepared: false};
                 edits = {};
-                return {...info, steps, ms: performance.now() - start, cached: true};
+                // A commit builds the same under every ref and in every fork, so the stored build says who made it and not who asks.
+                return {...info, gh: current.spec.gh, label: current.label, steps, ms: performance.now() - start, cached: true};
             }
         }
 

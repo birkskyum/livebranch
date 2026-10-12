@@ -2,7 +2,8 @@
 // Chromium, and fails when one of them does not come up clean. The pull request is also opened by
 // its GitHub address, which compares it with the default branch, and the comparison is stopped.
 // Each ref has to be named once there: on its own side in a comparison, in the header without one.
-// A commit that is opened by its hash has to say which branch it is the head of.
+// A commit that is opened by its hash has to say which branch it is the head of. Its build is then
+// reused for the branch, which has to keep its own name.
 // The last page stands in for GitHub's answer about the pull request, to give its description a demo.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
@@ -22,6 +23,7 @@ const files = {
 };
 const small = await (await fetch(`${site}api/link`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({files})})).json();
 const {commit: head} = await (await fetch(`${site}api/github/resolve?repo=maplibre/maplibre-gl-js&ref=main`)).json();
+if (!head) throw new Error('The site did not say where main of maplibre-gl-js is.');
 const described = '```ts livebranch\nimport {Map} from "maplibre-gl";\ndocument.body.dataset.described = typeof Map;\n```\n';
 const pages = {
     // A local Worker names the live site in its links, so only the link's parameters are taken.
@@ -39,11 +41,15 @@ const pages = {
     },
     'commit at the head of a branch': {
         url: `${site}#gh=maplibre/maplibre-gl-js@${head}`,
-        ok: found => found.canvas > 0 && found.label === `${head.slice(0, 7)} (main)`,
+        ok: found => found.canvas > 0 && found.label === `${head.slice(0, 7)} (main)` && found.reused === `main ${head.slice(0, 7)}`,
         async after(page) {
             const label = page.locator('header span', {has: page.locator('a[title="Open the commit on GitHub"]')}).last();
+            const text = async () => (await label.innerText()).replace(/\s+/g, ' ');
             await label.getByText('main').waitFor({timeout: 15000});
-            return {label: (await label.innerText()).replace(/\s+/g, ' ')};
+            const found = {label: await text()};
+            await page.goto(`${site}#gh=maplibre/maplibre-gl-js@main`);
+            await page.waitForFunction(() => window.__livebranch.state.phase === 'ready' && window.__livebranch.state.session?.cached, undefined, {timeout: 90000});
+            return {...found, reused: await text()};
         },
     },
     'demo in the description': {
