@@ -2,7 +2,7 @@ import {createStore, produce} from 'solid-js/store';
 import {createEngine, type Engine} from '../engine/client.ts';
 import type {Problem} from '../engine/build.ts';
 import type {SessionInfo} from '../engine/protocol.ts';
-import {demoBlocks, fetchPullRequest, type PullRequest} from '../engine/sources/pull.ts';
+import {demoSection, fetchPullRequest, type PullRequest} from '../engine/sources/pull.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeBase, parseGithubRef, type LinkSpec} from '../engine/spec.ts';
 
 export type Phase = 'landing' | 'loading' | 'ready' | 'failed';
@@ -257,20 +257,20 @@ export async function shareLink(resultOnly = isResultOnly(), change: Partial<Lin
 }
 
 /**
- * The demo of the open project as code blocks for a pull request's description. Opened by its
- * address, the pull request then runs it. Without a demo of its own the project's stock demo is
- * what a new one starts from.
+ * The demo of the open project as code blocks for a pull request's description, folded away under
+ * a line that says where it runs. Opened by its address, the pull request then runs it. Without a
+ * demo of its own the project's stock demo is what a new one starts from.
  */
 export async function demoBlock(): Promise<string> {
     const files = demoFiles();
     const stock = state.session?.file;
     if (!Object.keys(files).length && stock) files[stock.slice(1)] = await getEngine().read(stock) ?? '';
     const {gh} = state.spec;
-    if (!gh || !isPullRequest(gh)) return demoBlocks(files);
+    if (!gh || !isPullRequest(gh)) return demoSection(files);
     const {owner, repo, ref} = parseGithubRef(gh);
     const against = state.pull?.base || state.spec.base;
     const where = `${base}${owner}/${repo}/${ref.replace(/\/head$/, '')}`;
-    return `The demo below runs ${against ? `on ${against} and ` : ''}on this pull request at ${where}\n\n${demoBlocks(files)}`;
+    return demoSection(files, `The demo runs ${against ? `on ${against} and ` : ''}on this pull request at ${where}`);
 }
 
 /** The default branch of a source's repository, or undefined where the site has no reader to ask. */

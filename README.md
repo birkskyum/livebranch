@@ -51,7 +51,8 @@ new maplibregl.Map({container: 'map', style: 'https://demotiles.maplibre.org/sty
 
 GitHub highlights the block by its first word and shows nothing of the rest. A further word names
 the file (`ts livebranch helper.ts`). Without one a `ts` block is `demo.ts` and an `html` block is
-`index.html`. The Copy for PR button copies the open demo as such a block. The page reads the
+`index.html`. The Copy for PR button copies the open demo as such a block, folded away in a
+`<details>` element under a line that names the address. The page reads the
 description from GitHub's API (`src/engine/sources/pull.ts`), one request for each opened pull
 request, and only for a link without files or an `entry` of its own. Past the 60 requests an hour
 that an anonymous address gets, the project's stock demo runs and a warning says why.

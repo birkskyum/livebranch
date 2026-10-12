@@ -47,6 +47,14 @@ export function demoBlocks(files: Record<string, string>): string {
     }).join('\n');
 }
 
+/**
+ * What to paste into a description for a demo: `intro`, which says where the demo runs, and the
+ * files as marked code blocks. The code is folded away, so that the description stays short.
+ */
+export function demoSection(files: Record<string, string>, intro = ''): string {
+    return `${intro ? `${intro}\n\n` : ''}<details>\n<summary>Demo code</summary>\n\n${demoBlocks(files)}\n</details>\n`;
+}
+
 export interface PullRequest {
     title: string;
     /** The branch that the pull request goes into. */

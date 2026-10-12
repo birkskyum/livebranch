@@ -33,7 +33,8 @@ The address of the pull request, `https://livebranch.dev/owner/repo/pull/123`, t
 - A further word names the file: `ts livebranch helper.ts`. Without one, a `ts` block is `demo.ts` and an `html` block is `index.html`.
 - A link that has files of its own (`code`, `gist`) or an `entry` does not read the description.
 - The page reads the description from GitHub's API. That is one request for each opened pull request, out of the 60 an hour that an anonymous visitor gets. Past them the project's stock demo runs and a warning says why.
-- The Copy for PR button of the page copies the open demo as such a block, with a line that names the address. `window.__livebranch.block()` returns the same text.
+- The block may sit inside a `<details>` element, which keeps a long demo out of the way. It needs an empty line before and after it there.
+- The Copy for PR button of the page copies the open demo as such a block, folded away in `<details>` under a line that names the address. `window.__livebranch.block()` returns the same text.
 - `/api/link` and `/api/check` do not read descriptions. Send the demo to them as `files`.
 
 ## Link parameters

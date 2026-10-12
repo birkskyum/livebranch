@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {demoBlocks, demoFiles, fetchPullRequest} from './pull.ts';
+import {demoBlocks, demoFiles, demoSection, fetchPullRequest} from './pull.ts';
 
 const description = [
     'Fixes #1. The camera no longer drops.',
@@ -52,6 +52,31 @@ test('writes files as blocks that read back the same', () => {
     assert.match(blocks, /\n```json livebranch data\/points\.json\n/);
     assert.deepEqual(demoFiles(blocks), files);
     assert.deepEqual(demoFiles(`Some words.\n\n${demoBlocks({'demo.ts': 'no newline at the end'})}`), {'demo.ts': 'no newline at the end\n'});
+});
+
+test('folds the code of a demo away in what goes into a description', () => {
+    const files = {'demo.ts': 'let a = 1;\n', 'helper.ts': 'export {};\n'};
+    const section = demoSection(files, 'The demo runs at https://example.test/o/r/pull/1');
+    // GitHub renders a code block inside details only with an empty line before and after it.
+    assert.equal(section, [
+        'The demo runs at https://example.test/o/r/pull/1',
+        '',
+        '<details>',
+        '<summary>Demo code</summary>',
+        '',
+        '```ts livebranch',
+        'let a = 1;',
+        '```',
+        '',
+        '```ts livebranch helper.ts',
+        'export {};',
+        '```',
+        '',
+        '</details>',
+        '',
+    ].join('\n'));
+    assert.deepEqual(demoFiles(section), files);
+    assert.match(demoSection(files), /^<details>\n/);
 });
 
 test('reads a pull request with its demo and the branch it goes into', async () => {
