@@ -1,6 +1,7 @@
 // Opens a small page and a maplibre-gl-js pull request on a livebranch site in Firefox, WebKit and
 // Chromium, and fails when one of them does not come up clean. The pull request is also opened by
 // its GitHub address, which compares it with the default branch, and the comparison is stopped.
+// Each ref has to be named once there: on its own side in a comparison, in the header without one.
 // The last page stands in for GitHub's answer about the pull request, to give its description a demo.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
@@ -26,12 +27,12 @@ const pages = {
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628`,
-        ok: found => found.canvas > 0 && found.frames === 2 && found.alone === 1,
+        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.getByRole('button', {name: 'Compare with…'}).click();
             await page.getByRole('button', {name: 'Stop comparing'}).click();
             await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
-            return {alone: await page.locator('iframe').count()};
+            return {alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'demo in the description': {
@@ -75,6 +76,7 @@ for (const name of names) {
                     out: preview?.querySelector('#out')?.textContent,
                     canvas: preview?.querySelector('canvas')?.width,
                     frames: document.querySelectorAll('iframe').length,
+                    named: document.querySelectorAll('a[title="Open on GitHub"]').length,
                     described: [...document.querySelectorAll('iframe')].map(frame => frame.contentDocument?.body.dataset.described),
                 };
             });

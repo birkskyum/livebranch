@@ -76,18 +76,19 @@ function Header() {
     );
 }
 
-/** The refs that are running, each linked to its page on GitHub and to its commit. */
+/**
+ * The ref that is running, linked to its page on GitHub and to its commit. In a comparison each
+ * side names its own ref, so the header does not name them again.
+ */
 function Sources() {
     return (
-        <span class="flex min-w-0 items-center gap-2 font-mono text-xs">
-            <Show when={state.session} fallback={<span>{state.spec.gh ?? ''}</span>}>
-                <Show when={baseSource(state.spec)}>
-                    <RefLinks gh={baseSource(state.spec)} session={state.base} />
-                    <span class="text-neutral-400">and</span>
+        <Show when={!state.session || !baseSource(state.spec)}>
+            <span class="flex min-w-0 items-center gap-2 font-mono text-xs">
+                <Show when={state.session} fallback={<span>{state.spec.gh ?? ''}</span>}>
+                    <RefLinks gh={state.spec.gh} session={state.session} fallback={state.session!.label} />
                 </Show>
-                <RefLinks gh={state.spec.gh} session={state.session} fallback={state.session!.label} />
-            </Show>
-        </span>
+            </span>
+        </Show>
     );
 }
 
