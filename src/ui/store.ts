@@ -284,6 +284,17 @@ export async function defaultBranch(gh: string): Promise<string | undefined> {
     }
 }
 
+/** The branches whose head is the commit that `gh` names, the default branch first. None where the site has no reader to ask. */
+export async function branchesAt(gh: string): Promise<string[]> {
+    try {
+        const {owner, repo, ref} = parseGithubRef(gh);
+        const response = await fetch(`${base}api/github/branches?repo=${owner}/${repo}&commit=${ref}`);
+        return response.ok ? (await response.json()).branches ?? [] : [];
+    } catch {
+        return [];
+    }
+}
+
 /** Runs the same page against `ref` next to the open project, or stops comparing when `ref` is empty. The edits stay. */
 export async function compareWith(ref: string): Promise<void> {
     const link = await shareLink(isResultOnly(), {base: normalizeBase(ref)});

@@ -4,7 +4,7 @@
 import tscModule from '../public/tsc/ts_rust.wasm';
 import {checkProject} from '../src/engine/check.ts';
 import {openProject, type Env as EngineEnv} from '../src/engine/project.ts';
-import {defaultBranch, listTree, resolveRef} from '../src/engine/sources/git.ts';
+import {branchesAt, defaultBranch, listTree, resolveRef} from '../src/engine/sources/git.ts';
 import {resolveSource, type GitReader} from '../src/engine/sources/github.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
 import {TooLargeError} from '../src/engine/tsc.ts';
@@ -43,9 +43,10 @@ const git: GitReader = {
 };
 
 /**
- * Reads a ref, a commit's file list or the default branch from GitHub's git endpoint, for
- * browsers, which may not ask it themselves. The answers are kept at the edge: a commit's files
- * for good, a ref for half a minute, the default branch for five minutes.
+ * Reads a ref, a commit's file list, the default branch or the branches at a commit from GitHub's
+ * git endpoint, for browsers, which may not ask it themselves. The answers are kept at the edge: a
+ * commit's files for good, a ref and the branches at a commit for half a minute, the default
+ * branch for five minutes.
  */
 async function github(request: Request, url: URL, context: ExecutionContext): Promise<Response> {
     const hit = await caches.default.match(request);
@@ -63,6 +64,10 @@ async function github(request: Request, url: URL, context: ExecutionContext): Pr
             if (!/^[0-9a-f]{40}$/.test(commit)) throw new ApiError(400, 'Name a commit by its full hash.');
             const body = JSON.stringify({paths: await git.tree(owner, repo, commit)});
             response = new Response(body, {headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=31536000, immutable', ...CORS}});
+        } else if (url.pathname === '/api/github/branches') {
+            const commit = url.searchParams.get('commit') ?? '';
+            if (!/^[0-9a-f]{40}$/.test(commit)) throw new ApiError(400, 'Name a commit by its full hash.');
+            response = json({branches: await branchesAt((asked, init) => fetch(asked, init), owner, repo, commit)}, 200, {'cache-control': 'public, max-age=30'});
         } else if (url.pathname === '/api/github/default-branch') {
             response = json({branch: await defaultBranch((asked, init) => fetch(asked, init), owner, repo) ?? null}, 200, {'cache-control': 'public, max-age=300'});
         } else {

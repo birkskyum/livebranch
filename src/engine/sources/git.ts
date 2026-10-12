@@ -75,6 +75,21 @@ export async function defaultBranch(fetch: Fetch, owner: string, repo: string): 
     return undefined;
 }
 
+/** The branches whose head is `commit`, the default branch first. */
+export async function branchesAt(fetch: Fetch, owner: string, repo: string, commit: string): Promise<string[]> {
+    const data = await uploadPack(fetch, owner, repo, 'ls-refs', ['symrefs', 'ref-prefix HEAD', 'ref-prefix refs/heads/']);
+    const heads = 'refs/heads/';
+    const target = `symref-target:${heads}`;
+    const found: string[] = [];
+    let main: string | undefined;
+    for (const line of pktLines(data)) {
+        const [sha, name, ...attributes] = decoder.decode(line).trim().split(' ');
+        if (name === 'HEAD') main = attributes.find(attribute => attribute.startsWith(target))?.slice(target.length);
+        else if (sha === commit && name.startsWith(heads)) found.push(name.slice(heads.length));
+    }
+    return found.sort((a, b) => Number(b === main) - Number(a === main));
+}
+
 interface PackObject {
     type: number;
     data: Uint8Array;

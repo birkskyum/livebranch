@@ -1,7 +1,10 @@
-import {Show} from 'solid-js';
+import {Show, createResource} from 'solid-js';
 import type {SessionInfo} from '../engine/protocol.ts';
+import {branchesAt} from './store.ts';
 
 interface Ref {
+    /** The repository as `owner/name`. */
+    repo: string | undefined;
     /** The branch or tag, or `#123` for a pull request. Empty when the source names a commit. */
     name: string;
     nameUrl: string | undefined;
@@ -12,15 +15,16 @@ interface Ref {
 /** A short name for a source and for its commit, with their pages on GitHub. */
 export function describeRef(gh: string | undefined, session: SessionInfo | undefined): Ref {
     const match = /^([^@:]+)(?:@([^:]+))?/.exec(gh ?? '');
-    const repo = match ? `https://github.com/${match[1]}` : undefined;
+    const repo = match?.[1];
+    const page = `https://github.com/${repo}`;
     const ref = match?.[2] ?? '';
     const pull = /^pull\/(\d+)/.exec(ref);
     const sha = session?.commit;
     const commit = sha?.slice(0, 7) ?? '';
-    if (pull) return {name: `#${pull[1]}`, nameUrl: `${repo}/pull/${pull[1]}`, commit, commitUrl: sha && `${repo}/pull/${pull[1]}/commits/${sha}`};
-    const commitUrl = repo && sha ? `${repo}/commit/${sha}` : undefined;
-    if (!ref || /^[0-9a-f]{7,40}$/.test(ref)) return {name: '', nameUrl: undefined, commit, commitUrl};
-    return {name: ref, nameUrl: `${repo}/tree/${ref}`, commit, commitUrl};
+    if (pull) return {repo, name: `#${pull[1]}`, nameUrl: `${page}/pull/${pull[1]}`, commit, commitUrl: sha && `${page}/pull/${pull[1]}/commits/${sha}`};
+    const commitUrl = repo && sha ? `${page}/commit/${sha}` : undefined;
+    if (!ref || /^[0-9a-f]{7,40}$/.test(ref)) return {repo, name: '', nameUrl: undefined, commit, commitUrl};
+    return {repo, name: ref, nameUrl: `${page}/tree/${ref}`, commit, commitUrl};
 }
 
 export function refLabel(gh: string | undefined, session: SessionInfo | undefined): string {
@@ -28,9 +32,21 @@ export function refLabel(gh: string | undefined, session: SessionInfo | undefine
     return [name, commit].filter(Boolean).join(' ');
 }
 
-/** The name of a ref and its commit, as links to GitHub. `fallback` shows for a source that is not on GitHub. */
+/**
+ * The name of a ref and its commit, as links to GitHub. A source that names only a commit gets the
+ * branch that the commit is the head of, in parentheses. `fallback` shows for a source that is not
+ * on GitHub.
+ */
 export function RefLinks(props: {gh: string | undefined; session: SessionInfo | undefined; fallback?: string}) {
     const found = () => describeRef(props.gh, props.session);
+    const unnamed = () => {
+        const {name, repo} = found();
+        const sha = props.session?.commit;
+        return !name && repo && sha ? `${repo}@${sha}` : undefined;
+    };
+    const [asked] = createResource(unnamed, branchesAt);
+    // An answer about the commit before this one is not shown.
+    const branches = () => unnamed() && !asked.loading ? asked() ?? [] : [];
     const link = 'hover:underline';
     return (
         <Show when={props.gh} fallback={<span>{props.fallback}</span>}>
@@ -40,6 +56,12 @@ export function RefLinks(props: {gh: string | undefined; session: SessionInfo | 
                 </Show>
                 <Show when={found().commit}>
                     <a class={link} href={found().commitUrl} target="_blank" rel="noreferrer" title="Open the commit on GitHub">{found().commit}</a>
+                </Show>
+                <Show when={branches().length}>
+                    <span title={`This commit is the head of ${branches().join(', ')}.`}>
+                        (<a class={link} href={`https://github.com/${found().repo}/tree/${branches()[0]}`} target="_blank" rel="noreferrer">{branches()[0]}</a>
+                        {branches().length > 1 ? ` +${branches().length - 1}` : ''})
+                    </span>
                 </Show>
             </span>
         </Show>

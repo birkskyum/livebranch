@@ -2,6 +2,7 @@
 // Chromium, and fails when one of them does not come up clean. The pull request is also opened by
 // its GitHub address, which compares it with the default branch, and the comparison is stopped.
 // Each ref has to be named once there: on its own side in a comparison, in the header without one.
+// A commit that is opened by its hash has to say which branch it is the head of.
 // The last page stands in for GitHub's answer about the pull request, to give its description a demo.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
@@ -20,6 +21,7 @@ const files = {
     'shape.ts': 'export function area(side: number): number { return side ** 2; }\n',
 };
 const small = await (await fetch(`${site}api/link`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({files})})).json();
+const {commit: head} = await (await fetch(`${site}api/github/resolve?repo=maplibre/maplibre-gl-js&ref=main`)).json();
 const described = '```ts livebranch\nimport {Map} from "maplibre-gl";\ndocument.body.dataset.described = typeof Map;\n```\n';
 const pages = {
     // A local Worker names the live site in its links, so only the link's parameters are taken.
@@ -33,6 +35,15 @@ const pages = {
             await page.getByRole('button', {name: 'Stop comparing'}).click();
             await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
             return {alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+        },
+    },
+    'commit at the head of a branch': {
+        url: `${site}#gh=maplibre/maplibre-gl-js@${head}`,
+        ok: found => found.canvas > 0 && found.label === `${head.slice(0, 7)} (main)`,
+        async after(page) {
+            const label = page.locator('header span', {has: page.locator('a[title="Open the commit on GitHub"]')}).last();
+            await label.getByText('main').waitFor({timeout: 15000});
+            return {label: (await label.innerText()).replace(/\s+/g, ' ')};
         },
     },
     'demo in the description': {
