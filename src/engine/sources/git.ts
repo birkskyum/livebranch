@@ -63,6 +63,18 @@ export async function resolveRef(fetch: Fetch, owner: string, repo: string, ref:
     return undefined;
 }
 
+/** The name of a repository's default branch, or undefined when it has none, as an empty repository does. */
+export async function defaultBranch(fetch: Fetch, owner: string, repo: string): Promise<string | undefined> {
+    const data = await uploadPack(fetch, owner, repo, 'ls-refs', ['symrefs', 'ref-prefix HEAD']);
+    const target = 'symref-target:refs/heads/';
+    for (const line of pktLines(data)) {
+        const [, name, ...attributes] = decoder.decode(line).trim().split(' ');
+        const branch = attributes.find(attribute => attribute.startsWith(target))?.slice(target.length);
+        if (name === 'HEAD' && branch) return branch;
+    }
+    return undefined;
+}
+
 interface PackObject {
     type: number;
     data: Uint8Array;

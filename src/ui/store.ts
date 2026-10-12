@@ -2,7 +2,7 @@ import {createStore, produce} from 'solid-js/store';
 import {createEngine, type Engine} from '../engine/client.ts';
 import type {Problem} from '../engine/build.ts';
 import type {SessionInfo} from '../engine/protocol.ts';
-import {baseSource, decodeSpec, encodeSpec, isEmptySpec, type LinkSpec} from '../engine/spec.ts';
+import {baseSource, decodeSpec, encodeSpec, isEmptySpec, normalizeBase, parseGithubRef, type LinkSpec} from '../engine/spec.ts';
 
 export type Phase = 'landing' | 'loading' | 'ready' | 'failed';
 export type Tab = 'problems' | 'console' | 'terminal' | 'build';
@@ -208,12 +208,29 @@ export function setView(change: Partial<Pick<State, 'showCode' | 'showPanel' | '
     history.replaceState(null, '', `#${isResultOnly() ? 'view=result&' : ''}${rest}`);
 }
 
-/** The link of the open project with the edits in it. */
-export async function shareLink(resultOnly = isResultOnly()): Promise<string> {
+/** The link of the open project with the edits in it, and with `change` applied. */
+export async function shareLink(resultOnly = isResultOnly(), change: Partial<LinkSpec> = {}): Promise<string> {
     const files: Record<string, string> = {...state.spec.files};
     for (const [path, text] of Object.entries(state.edits)) files[path.slice(1)] = text;
-    const params = await encodeSpec({...state.spec, files});
+    const params = await encodeSpec({...state.spec, files, ...change});
     return `${base}#${resultOnly ? 'view=result&' : ''}${params}`;
+}
+
+/** The default branch of a source's repository, or undefined where the site has no reader to ask. */
+export async function defaultBranch(gh: string): Promise<string | undefined> {
+    try {
+        const {owner, repo} = parseGithubRef(gh);
+        const response = await fetch(`${base}api/github/default-branch?repo=${owner}/${repo}`);
+        return response.ok ? (await response.json()).branch ?? undefined : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Runs the same page against `ref` next to the open project, or stops comparing when `ref` is empty. The edits stay. */
+export async function compareWith(ref: string): Promise<void> {
+    const link = await shareLink(isResultOnly(), {base: normalizeBase(ref)});
+    navigate(link.slice(link.indexOf('#')));
 }
 
 export function navigate(hash: string): void {

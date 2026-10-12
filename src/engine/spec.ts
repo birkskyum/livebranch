@@ -105,6 +105,16 @@ export function normalizeGithubSource(text: string): {gh: string; entry?: string
     return {gh: base};
 }
 
+/** Whether a source names a pull request. */
+export function isPullRequest(gh: string): boolean {
+    return /^[^/@\s]+\/[^/@\s]+@pull\/\d+(?:\/head)?(?::|$)/.test(gh);
+}
+
+/** The ref to compare with as people type it. `#123` is a pull request, which is how the app shows one. */
+export function normalizeBase(text: string): string {
+    return text.trim().replace(/^#(\d+)$/, 'pull/$1');
+}
+
 /** The full source of the ref that a link compares against, if it names one. */
 export function baseSource(spec: LinkSpec): string | undefined {
     if (!spec.base) return undefined;

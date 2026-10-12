@@ -1,6 +1,6 @@
 import {createSignal} from 'solid-js';
-import {encodeSpec, normalizeGithubSource} from '../engine/spec.ts';
-import {navigate} from './store.ts';
+import {encodeSpec, isPullRequest, normalizeGithubSource} from '../engine/spec.ts';
+import {defaultBranch, navigate} from './store.ts';
 
 const STARTER = `<!doctype html>
 <meta charset="utf-8">
@@ -23,7 +23,9 @@ export function Landing() {
         event.preventDefault();
         const {gh, entry} = source().trim() ? normalizeGithubSource(source()) : {gh: undefined, entry: undefined};
         const files = page().trim() && !(gh && page() === STARTER) ? {'index.html': page()} : undefined;
-        navigate(await encodeSpec({gh, entry, files}));
+        // A pull request opens next to the default branch, as its address in the path does.
+        const base = gh && isPullRequest(gh) ? await defaultBranch(gh) : undefined;
+        navigate(await encodeSpec({gh, base, entry, files}));
     };
 
     return (

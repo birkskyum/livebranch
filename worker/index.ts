@@ -4,9 +4,9 @@
 import tscModule from '../public/tsc/ts_rust.wasm';
 import {checkProject} from '../src/engine/check.ts';
 import {openProject, type Env as EngineEnv} from '../src/engine/project.ts';
-import {listTree, resolveRef} from '../src/engine/sources/git.ts';
+import {defaultBranch, listTree, resolveRef} from '../src/engine/sources/git.ts';
 import {resolveSource, type GitReader} from '../src/engine/sources/github.ts';
-import {baseSource, decodeSpec, encodeSpec, isEmptySpec, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
+import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
 import {TooLargeError} from '../src/engine/tsc.ts';
 
 interface Env {
@@ -43,8 +43,9 @@ const git: GitReader = {
 };
 
 /**
- * Reads a ref or a commit's file list from GitHub's git endpoint, for browsers, which may not ask
- * it themselves. The answers are kept at the edge: a commit's files for good, a ref for half a minute.
+ * Reads a ref, a commit's file list or the default branch from GitHub's git endpoint, for
+ * browsers, which may not ask it themselves. The answers are kept at the edge: a commit's files
+ * for good, a ref for half a minute, the default branch for five minutes.
  */
 async function github(request: Request, url: URL, context: ExecutionContext): Promise<Response> {
     const hit = await caches.default.match(request);
@@ -62,6 +63,8 @@ async function github(request: Request, url: URL, context: ExecutionContext): Pr
             if (!/^[0-9a-f]{40}$/.test(commit)) throw new ApiError(400, 'Name a commit by its full hash.');
             const body = JSON.stringify({paths: await git.tree(owner, repo, commit)});
             response = new Response(body, {headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=31536000, immutable', ...CORS}});
+        } else if (url.pathname === '/api/github/default-branch') {
+            response = json({branch: await defaultBranch((asked, init) => fetch(asked, init), owner, repo) ?? null}, 200, {'cache-control': 'public, max-age=300'});
         } else {
             throw new ApiError(404, `There is no ${url.pathname}.`);
         }
@@ -205,11 +208,12 @@ async function api(request: Request, env: Env, url: URL, context: ExecutionConte
 const OWN_PATHS = /^(?:assets|tsc|rt|api|cdn-cgi)$/;
 
 /**
- * The app link for a GitHub address in the path. People get there by putting this site's address
- * in front of a GitHub URL, or by swapping `github.com` for it: `/github.com/owner/repo/pull/1`,
- * `/https://github.com/owner/repo/tree/branch` and `/owner/repo/pull/1` all work.
+ * The source that a GitHub address in the path names. People get there by putting this site's
+ * address in front of a GitHub URL, or by swapping `github.com` for it:
+ * `/github.com/owner/repo/pull/1`, `/https://github.com/owner/repo/tree/branch` and
+ * `/owner/repo/pull/1` all work.
  */
-export function linkForPath(pathname: string): string | undefined {
+export function sourceForPath(pathname: string): {gh: string; entry?: string} | undefined {
     let path: string;
     try {
         path = decodeURIComponent(pathname.slice(1));
@@ -219,15 +223,29 @@ export function linkForPath(pathname: string): string | undefined {
     path = path.replace(/^https?:\/+/, '').replace(/^(?:www\.)?github\.com\//, '');
     const match = /^([A-Za-z0-9-]+)\/[\w.-]+(?:\/|$)/.exec(path);
     if (!match || OWN_PATHS.test(match[1])) return undefined;
-    const {gh, entry} = normalizeGithubSource(`https://github.com/${path}`);
-    return `/#gh=${gh}${entry ? `&entry=${entry}` : ''}`;
+    return normalizeGithubSource(`https://github.com/${path}`);
+}
+
+/** The default branch of a source's repository, or undefined when GitHub does not tell. */
+async function defaultBranchOf(gh: string, url: URL, context: ExecutionContext): Promise<string | undefined> {
+    try {
+        const {owner, repo} = parseGithubRef(gh);
+        const asked = new URL(`/api/github/default-branch?repo=${owner}/${repo}`, url);
+        const response = await github(new Request(asked), asked, context);
+        return (await response.json() as {branch: string | null}).branch ?? undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 export default {
     async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
         if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return api(request, env, url, context);
-        const target = request.method === 'GET' ? linkForPath(url.pathname) : undefined;
-        return target ? Response.redirect(url.origin + target, 302) : env.ASSETS.fetch(request);
+        const source = request.method === 'GET' ? sourceForPath(url.pathname) : undefined;
+        if (!source) return env.ASSETS.fetch(request);
+        // A pull request opens next to the branch that most of them go into, which shows what it changes.
+        const base = isPullRequest(source.gh) ? await defaultBranchOf(source.gh, url, context) : undefined;
+        return Response.redirect(`${url.origin}/#${await encodeSpec({...source, base})}`, 302);
     },
 };

@@ -32,7 +32,10 @@ pull request shows its latest push. A link that names a commit never changes.
 
 A demo does not need a page. A link can carry a `demo.ts` alone, which runs in a page made from
 the project's template. For maplibre-gl-js that page has the stylesheet and a full-size `#map`.
-With `base=main` the same script runs against main and against the branch, side by side.
+With `base=main` the same script runs against main and against the branch, side by side. The
+Compare button in the header does the same: its first click adds the repository's default branch,
+and after that it changes the ref or stops comparing. A pull request that is opened by its GitHub
+address (`livebranch.dev/owner/repo/pull/123`) starts next to the default branch.
 
 A page may hold TypeScript in its inline `<script type="module">`. Imports of npm packages load
 from esm.sh, at the version that the project's `package-lock.json` or `package.json` names. An

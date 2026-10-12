@@ -1,10 +1,10 @@
-import {For, Match, Show, Switch, createMemo, createSignal} from 'solid-js';
+import {For, Match, Show, Switch, createMemo, createSignal, onMount} from 'solid-js';
 import {CodePanel} from './CodePanel.tsx';
 import {Preview} from './Preview.tsx';
 import {Terminal} from './Terminal.tsx';
-import {baseSource} from '../engine/spec.ts';
+import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {RefLinks} from './RefLinks.tsx';
-import {allProblems, setState, setView, shareLink, state, type Tab} from './store.ts';
+import {allProblems, compareWith, defaultBranch, setState, setView, shareLink, state, type Tab} from './store.ts';
 
 const button = 'rounded px-2 py-1 hover:bg-neutral-200 dark:hover:bg-neutral-800';
 
@@ -49,6 +49,7 @@ function Header() {
         <header class="flex h-10 shrink-0 items-center gap-3 border-b border-neutral-200 px-3 dark:border-neutral-800">
             <a class="font-semibold" href="#">livebranch</a>
             <Sources />
+            <Show when={state.session && state.spec.gh}><Compare /></Show>
             <Status />
             <div class="ml-auto flex items-center gap-1">
                 <button class={button} classList={{[on]: state.showCode}} aria-pressed={state.showCode} onClick={() => setView({showCode: !state.showCode})}>Code</button>
@@ -77,6 +78,54 @@ function Sources() {
                 <RefLinks gh={state.spec.gh} session={state.session} fallback={state.session!.label} />
             </Show>
         </span>
+    );
+}
+
+/** The field that names the ref to compare with. */
+function CompareForm(props: {close(): void}) {
+    let input!: HTMLInputElement;
+    onMount(() => {
+        input.focus();
+        input.select();
+    });
+    const apply = (ref: string) => {
+        props.close();
+        void compareWith(ref);
+    };
+    return (
+        <form class="flex shrink-0 items-center gap-1" onSubmit={event => { event.preventDefault(); apply(input.value); }} onKeyDown={event => { if (event.key === 'Escape') props.close(); }}>
+            <input
+                ref={input}
+                class="w-44 rounded border border-neutral-300 bg-transparent px-2 py-0.5 font-mono text-xs dark:border-neutral-700"
+                aria-label="Ref to compare with"
+                placeholder="branch, tag, commit or #123"
+                spellcheck={false}
+                value={state.spec.base ?? ''}
+            />
+            <button class={button} type="submit">Compare</button>
+            <Show when={state.spec.base}><button class={button} type="button" onClick={() => apply('')}>Stop comparing</button></Show>
+            <button class={button} type="button" onClick={props.close}>Cancel</button>
+        </form>
+    );
+}
+
+/**
+ * Starts, changes and stops the comparison with another ref. The first click compares with the
+ * repository's default branch, which is what a branch or a pull request is mostly held against.
+ */
+function Compare() {
+    const [editing, setEditing] = createSignal(false);
+    const start = async () => {
+        const gh = state.spec.gh!;
+        const branch = state.spec.base ? undefined : await defaultBranch(gh);
+        // The default branch next to itself shows nothing, so then the ref is asked for.
+        if (branch && !['HEAD', branch].includes(parseGithubRef(gh).ref)) void compareWith(branch);
+        else setEditing(true);
+    };
+    return (
+        <Show when={editing()} fallback={<button class={`${button} shrink-0`} onClick={start}>{state.spec.base ? 'Compare with…' : 'Compare'}</button>}>
+            <CompareForm close={() => setEditing(false)} />
+        </Show>
     );
 }
 

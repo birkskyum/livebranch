@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {baseSource, decodeSpec, encodeSpec, normalizeGithubSource, parseGithubRef} from './spec.ts';
+import {baseSource, decodeSpec, encodeSpec, isPullRequest, normalizeBase, normalizeGithubSource, parseGithubRef} from './spec.ts';
 
 test('parses GitHub sources', () => {
     assert.deepEqual(parseGithubRef('o/r@main'), {owner: 'o', repo: 'r', ref: 'main', subdir: ''});
@@ -33,4 +33,15 @@ test('the ref to compare with is a ref of the same repository or a full source',
     assert.equal(baseSource({gh: 'fork/r@feature', base: 'o/r@main'}), 'o/r@main');
     assert.equal(baseSource({gh: 'o/r@feature', base: 'https://github.com/o/r/tree/release/1.x'}), 'o/r@release/1.x');
     assert.equal(baseSource({gh: 'o/r@feature'}), undefined);
+    assert.equal(baseSource({gh: 'o/r@feature', base: normalizeBase(' #12 ')}), 'o/r@pull/12');
+    assert.equal(normalizeBase('release/1.x'), 'release/1.x');
+});
+
+test('tells a pull request from other sources', () => {
+    assert.equal(isPullRequest(normalizeGithubSource('https://github.com/o/r/pull/12/files').gh), true);
+    assert.equal(isPullRequest('o/r@pull/12/head'), true);
+    assert.equal(isPullRequest('o/r@pull/12:packages/a'), true);
+    assert.equal(isPullRequest('o/r@pull/12-fix'), false);
+    assert.equal(isPullRequest('o/r@main'), false);
+    assert.equal(isPullRequest('o/r'), false);
 });
