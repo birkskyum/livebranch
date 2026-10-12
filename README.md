@@ -37,6 +37,25 @@ Compare button in the header does the same: its first click adds the repository'
 and after that it changes the ref or stops comparing. A pull request that is opened by its GitHub
 address (`livebranch.dev/owner/repo/pull/123`) starts next to the default branch.
 
+A pull request can carry its demo in its description, as a code block that is marked for this
+site. Opened by its address, the pull request then runs that demo on both sides, so the address is
+all there is to share.
+
+````md
+```ts livebranch
+import * as maplibregl from 'maplibre-gl';
+
+new maplibregl.Map({container: 'map', style: 'https://demotiles.maplibre.org/style.json'});
+```
+````
+
+GitHub highlights the block by its first word and shows nothing of the rest. A further word names
+the file (`ts livebranch helper.ts`). Without one a `ts` block is `demo.ts` and an `html` block is
+`index.html`. The Copy for PR button copies the open demo as such a block. The page reads the
+description from GitHub's API (`src/engine/sources/pull.ts`), one request for each opened pull
+request, and only for a link without files or an `entry` of its own. Past the 60 requests an hour
+that an anonymous address gets, the project's stock demo runs and a warning says why.
+
 A page may hold TypeScript in its inline `<script type="module">`. Imports of npm packages load
 from esm.sh, at the version that the project's `package-lock.json` or `package.json` names. An
 import of the project's own package name resolves to `src/index.ts`.

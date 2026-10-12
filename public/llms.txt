@@ -15,6 +15,27 @@ The same as link parameters: `https://livebranch.dev/#gh=owner/repo@ref`.
 
 The address of a pull request opens it next to the repository's default branch, so that what it changes shows. It redirects to `#gh=owner/repo@pull/123&base=main`. The Compare button in the header starts, changes and stops a comparison.
 
+## A demo in the description of a pull request
+
+A pull request can carry the demo that shows what it changes. Put it in the description as a code block whose first line says `livebranch` after the language:
+
+````md
+```ts livebranch
+import * as maplibregl from 'maplibre-gl';
+
+const map = new maplibregl.Map({container: 'map', style: 'https://demotiles.maplibre.org/style.json'});
+```
+````
+
+The address of the pull request, `https://livebranch.dev/owner/repo/pull/123`, then runs that demo on the default branch and on the pull request, side by side. No link with code in it is needed, and editing the description changes the demo.
+
+- GitHub shows the block as highlighted code and nothing of the word `livebranch`. So write next to it where it runs.
+- A further word names the file: `ts livebranch helper.ts`. Without one, a `ts` block is `demo.ts` and an `html` block is `index.html`.
+- A link that has files of its own (`code`, `gist`) or an `entry` does not read the description.
+- The page reads the description from GitHub's API. That is one request for each opened pull request, out of the 60 an hour that an anonymous visitor gets. Past them the project's stock demo runs and a warning says why.
+- The Copy for PR button of the page copies the open demo as such a block, with a line that names the address. `window.__livebranch.block()` returns the same text.
+- `/api/link` and `/api/check` do not read descriptions. Send the demo to them as `files`.
+
 ## Link parameters
 
 They go in the URL fragment, joined by `&`.
@@ -92,6 +113,8 @@ Any headless browser can open a link. The page says how it went:
 - `window.__livebranch.state.console` has what the page logged, and its uncaught errors.
 - `window.__livebranch.exec('grep -rn foo src')` runs a shell command over the project's files (bash, with `tsc` and `node`).
 - `window.__livebranch.edit('/demo.ts', text)` changes a file and rebuilds. `window.__livebranch.link()` returns the link with the edits in it.
+- `window.__livebranch.block()` returns the demo as code blocks for the description of a pull request.
+- `window.__livebranch.state.pull` has what GitHub says about an opened pull request: `title`, `base`, and `files` with the demo of its description.
 
 ## Which projects work
 

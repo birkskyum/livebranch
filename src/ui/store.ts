@@ -2,7 +2,8 @@ import {createStore, produce} from 'solid-js/store';
 import {createEngine, type Engine} from '../engine/client.ts';
 import type {Problem} from '../engine/build.ts';
 import type {SessionInfo} from '../engine/protocol.ts';
-import {baseSource, decodeSpec, encodeSpec, isEmptySpec, normalizeBase, parseGithubRef, type LinkSpec} from '../engine/spec.ts';
+import {demoBlocks, fetchPullRequest, type PullRequest} from '../engine/sources/pull.ts';
+import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeBase, parseGithubRef, type LinkSpec} from '../engine/spec.ts';
 
 export type Phase = 'landing' | 'loading' | 'ready' | 'failed';
 export type Tab = 'problems' | 'console' | 'terminal' | 'build';
@@ -21,6 +22,10 @@ export interface State {
     /** The same page built against the ref that the link compares with. */
     base: SessionInfo | undefined;
     baseError: string;
+    /** The open pull request as GitHub describes it, when its description was asked for a demo. */
+    pull: PullRequest | undefined;
+    /** Why the description could not be read, when it could not. */
+    pullProblem: string;
     console: ConsoleEntry[];
     /** Counts reloads of the preview. */
     runs: number;
@@ -46,6 +51,8 @@ export const [state, setState] = createStore<State>({
     session: undefined,
     base: undefined,
     baseError: '',
+    pull: undefined,
+    pullProblem: '',
     console: [],
     runs: 0,
     tab: 'console',
@@ -132,9 +139,29 @@ async function checkTypes(id: string): Promise<void> {
     if (problems.some(problem => problem.category === 'error')) setState('tab', 'problems');
 }
 
-/** The problems of the build and of the type check. */
+/** The problems of the build and of the type check, after a description that could not be read. */
 export function allProblems(): Problem[] {
-    return [...state.session?.problems ?? [], ...state.typeProblems];
+    const unread: Problem[] = state.pullProblem ? [{file: undefined, line: undefined, column: undefined, code: 0, category: 'warning', text: state.pullProblem}] : [];
+    return [...unread, ...state.session?.problems ?? [], ...state.typeProblems];
+}
+
+/**
+ * A pull request that is opened without files of its own takes its demo from its description.
+ * GitHub's API has the description, and allows an anonymous address 60 requests an hour. Past
+ * that the project's stock demo runs, with a warning.
+ */
+async function readPull(spec: LinkSpec): Promise<{pull?: PullRequest; problem?: string}> {
+    if (!spec.gh || !isPullRequest(spec.gh) || spec.files || spec.gist || spec.entry) return {};
+    const {owner, repo, ref} = parseGithubRef(spec.gh);
+    try {
+        return {pull: await fetchPullRequest((url, init) => fetch(url, init), owner, repo, Number(ref.split('/')[1]))};
+    } catch (error) {
+        const status = (error as {status?: number}).status;
+        // A pull request that does not exist fails where the project is opened, with a better message.
+        if (status === 404) return {};
+        const why = status === 403 || status === 429 ? 'GitHub allows 60 anonymous requests an hour from one address. Try again later.' : error instanceof Error ? error.message : String(error);
+        return {problem: `The description of this pull request was not read, so a demo in it does not run. ${why}`};
+    }
 }
 
 /** Counts calls of `openFromLocation`. A call that is no longer the latest drops its result. */
@@ -148,22 +175,25 @@ export async function openFromLocation(): Promise<void> {
     const spec = await decodeSpec(location.search, location.hash);
     // A result link starts with only the preview. The code and the console are one click away.
     const resultOnly = params.get('view') === 'result';
-    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', error: ''});
+    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
     if (isEmptySpec(spec)) {
         setState('phase', 'landing');
         return;
     }
     setState({phase: 'loading', step: 'starting'});
     try {
-        await ensureServiceWorker();
+        const [{pull, problem = ''}] = await Promise.all([readPull(spec), ensureServiceWorker()]);
+        if (opening !== openings) return;
         sessionStorage.removeItem('livebranch-reloaded');
+        setState({pull, pullProblem: problem});
+        const opened = pull && Object.keys(pull.files).length ? {...spec, files: pull.files} : spec;
         const options = {base, cache: !params.has('nocache') && !import.meta.env.DEV};
         const against = baseSource(spec);
-        const baseSession = against === undefined ? undefined : getBaseEngine().open({...spec, gh: against, base: undefined}, options).catch((error: unknown) => {
+        const baseSession = against === undefined ? undefined : getBaseEngine().open({...opened, gh: against, base: undefined}, options).catch((error: unknown) => {
             if (opening === openings) setState('baseError', error instanceof Error ? error.message : String(error));
             return undefined;
         });
-        const session = await getEngine().open(spec, options);
+        const session = await getEngine().open(opened, options);
         if (opening === openings) finish(session);
         const built = await baseSession;
         if (opening === openings) setState('base', built);
@@ -208,12 +238,39 @@ export function setView(change: Partial<Pick<State, 'showCode' | 'showPanel' | '
     history.replaceState(null, '', `#${isResultOnly() ? 'view=result&' : ''}${rest}`);
 }
 
-/** The link of the open project with the edits in it, and with `change` applied. */
-export async function shareLink(resultOnly = isResultOnly(), change: Partial<LinkSpec> = {}): Promise<string> {
-    const files: Record<string, string> = {...state.spec.files};
+/** The files that the open project runs on top of its source: the link's, or else the description's, with the edits. */
+function demoFiles(): Record<string, string> {
+    const files: Record<string, string> = {...state.pull?.files, ...state.spec.files};
     for (const [path, text] of Object.entries(state.edits)) files[path.slice(1)] = text;
-    const params = await encodeSpec({...state.spec, files, ...change});
+    return files;
+}
+
+/**
+ * The link of the open project with the edits in it, and with `change` applied. A demo from a
+ * pull request's description stays out of the link until it is edited, so that the link keeps
+ * following the description.
+ */
+export async function shareLink(resultOnly = isResultOnly(), change: Partial<LinkSpec> = {}): Promise<string> {
+    const edited = Object.keys(state.edits).length > 0;
+    const params = await encodeSpec({...state.spec, files: edited ? demoFiles() : state.spec.files, ...change});
     return `${base}#${resultOnly ? 'view=result&' : ''}${params}`;
+}
+
+/**
+ * The demo of the open project as code blocks for a pull request's description. Opened by its
+ * address, the pull request then runs it. Without a demo of its own the project's stock demo is
+ * what a new one starts from.
+ */
+export async function demoBlock(): Promise<string> {
+    const files = demoFiles();
+    const stock = state.session?.file;
+    if (!Object.keys(files).length && stock) files[stock.slice(1)] = await getEngine().read(stock) ?? '';
+    const {gh} = state.spec;
+    if (!gh || !isPullRequest(gh)) return demoBlocks(files);
+    const {owner, repo, ref} = parseGithubRef(gh);
+    const against = state.pull?.base || state.spec.base;
+    const where = `${base}${owner}/${repo}/${ref.replace(/\/head$/, '')}`;
+    return `The demo below runs ${against ? `on ${against} and ` : ''}on this pull request at ${where}\n\n${demoBlocks(files)}`;
 }
 
 /** The default branch of a source's repository, or undefined where the site has no reader to ask. */

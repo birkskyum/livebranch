@@ -1,6 +1,7 @@
 // Opens a small page and a maplibre-gl-js pull request on a livebranch site in Firefox, WebKit and
 // Chromium, and fails when one of them does not come up clean. The pull request is also opened by
 // its GitHub address, which compares it with the default branch, and the comparison is stopped.
+// The last page stands in for GitHub's answer about the pull request, to give its description a demo.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
 //   site     the site to check, https://livebranch.dev/ by default
@@ -18,6 +19,7 @@ const files = {
     'shape.ts': 'export function area(side: number): number { return side ** 2; }\n',
 };
 const small = await (await fetch(`${site}api/link`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({files})})).json();
+const described = '```ts livebranch\nimport {Map} from "maplibre-gl";\ndocument.body.dataset.described = typeof Map;\n```\n';
 const pages = {
     // A local Worker names the live site in its links, so only the link's parameters are taken.
     'small page': {url: `${site}${new URL(small.url).hash}`, ok: found => found.out === 'area 9, 2 triangles'},
@@ -32,13 +34,25 @@ const pages = {
             return {alone: await page.locator('iframe').count()};
         },
     },
+    'demo in the description': {
+        url: `${site}maplibre/maplibre-gl-js/pull/8628`,
+        ok: found => found.described.join() === 'function,function',
+        // The page asks for the description before the service worker controls it, which is as long as a test can answer in WebKit.
+        before: context => context.route('https://api.github.com/repos/maplibre/maplibre-gl-js/pulls/8628', route => route.fulfill({
+            contentType: 'application/json',
+            headers: {'access-control-allow-origin': '*'},
+            body: JSON.stringify({title: 'A pull request', body: `Fixes a thing.\r\n\r\n${described}`, base: {ref: 'main', repo: {default_branch: 'main'}}}),
+        })),
+    },
 };
 
 let failed = false;
 for (const name of names) {
     const browser = await engines[name].launch();
-    for (const [label, {url, ok, after}] of Object.entries(pages)) {
-        const page = await (await browser.newContext()).newPage();
+    for (const [label, {url, ok, before, after}] of Object.entries(pages)) {
+        const context = await browser.newContext();
+        await before?.(context);
+        const page = await context.newPage();
         const errors = [];
         page.on('pageerror', error => errors.push(String(error)));
         let found = {};
@@ -61,6 +75,7 @@ for (const name of names) {
                     out: preview?.querySelector('#out')?.textContent,
                     canvas: preview?.querySelector('canvas')?.width,
                     frames: document.querySelectorAll('iframe').length,
+                    described: [...document.querySelectorAll('iframe')].map(frame => frame.contentDocument?.body.dataset.described),
                 };
             });
             if (after && found.phase === 'ready') Object.assign(found, await after(page));
@@ -71,7 +86,7 @@ for (const name of names) {
         failed ||= !clean;
         console.log(`${clean ? 'ok  ' : 'FAIL'} ${name}, ${label}${found.seconds ? `, ${found.seconds} s` : ''}`);
         if (!clean) console.log(JSON.stringify({...found, pageErrors: errors}, null, 2));
-        await page.close();
+        await context.close();
     }
     await browser.close();
 }

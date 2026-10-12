@@ -4,7 +4,7 @@ import {Preview} from './Preview.tsx';
 import {Terminal} from './Terminal.tsx';
 import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {RefLinks} from './RefLinks.tsx';
-import {allProblems, compareWith, defaultBranch, setState, setView, shareLink, state, type Tab} from './store.ts';
+import {allProblems, compareWith, defaultBranch, demoBlock, setState, setView, shareLink, state, type Tab} from './store.ts';
 
 const button = 'rounded px-2 py-1 hover:bg-neutral-200 dark:hover:bg-neutral-800';
 
@@ -16,7 +16,8 @@ function Status() {
     const summary = createMemo(() => {
         const session = state.session;
         if (!session) return '';
-        return session.cached ? `from cache, ${seconds(session.ms)}` : `${session.sources} modules in ${seconds(session.ms)}`;
+        const built = session.cached ? `from cache, ${seconds(session.ms)}` : `${session.sources} modules in ${seconds(session.ms)}`;
+        return state.pull && Object.keys(state.pull.files).length ? `${built}, demo from the description` : built;
     });
     return (
         <span class="truncate text-neutral-500" data-testid="status">
@@ -30,11 +31,11 @@ function Status() {
 }
 
 function Header() {
-    const [copied, setCopied] = createSignal(false);
-    const copy = async () => {
-        await navigator.clipboard.writeText(await shareLink());
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+    const [copied, setCopied] = createSignal<'link' | 'block'>();
+    const copy = async (what: 'link' | 'block') => {
+        await navigator.clipboard.writeText(await (what === 'link' ? shareLink() : demoBlock()));
+        setCopied(what);
+        setTimeout(() => setCopied(), 1500);
     };
     const errors = () => allProblems().filter(problem => problem.category === 'error').length;
     const logged = () => state.console.length;
@@ -60,7 +61,16 @@ function Header() {
                     Console{logged() ? ` (${logged()})` : ''}
                 </button>
                 <button class={button} onClick={() => setState('runs', state.runs + 1)}>Reload</button>
-                <button class={button} onClick={copy}>{copied() ? 'Copied' : 'Copy link'}</button>
+                <button class={button} onClick={() => copy('link')}>{copied() === 'link' ? 'Copied' : 'Copy link'}</button>
+                <Show when={state.spec.gh}>
+                    <button
+                        class={button}
+                        title="Copies the demo as a code block for the description of a pull request. Opened here by its address, the pull request then runs it."
+                        onClick={() => copy('block')}
+                    >
+                        {copied() === 'block' ? 'Copied' : 'Copy for PR'}
+                    </button>
+                </Show>
             </div>
         </header>
     );
@@ -117,15 +127,25 @@ function Compare() {
     const [editing, setEditing] = createSignal(false);
     const start = async () => {
         const gh = state.spec.gh!;
-        const branch = state.spec.base ? undefined : await defaultBranch(gh);
+        const branch = state.spec.base ? undefined : state.pull?.base || await defaultBranch(gh);
         // The default branch next to itself shows nothing, so then the ref is asked for.
         if (branch && !['HEAD', branch].includes(parseGithubRef(gh).ref)) void compareWith(branch);
         else setEditing(true);
     };
+    // The address of a pull request compares with the default branch, which is not where every one goes.
+    const target = () => {
+        const {pull, spec} = state;
+        return pull?.base && spec.base === pull.defaultBranch && pull.base !== spec.base ? pull.base : undefined;
+    };
     return (
-        <Show when={editing()} fallback={<button class={`${button} shrink-0`} onClick={start}>{state.spec.base ? 'Compare with…' : 'Compare'}</button>}>
-            <CompareForm close={() => setEditing(false)} />
-        </Show>
+        <>
+            <Show when={editing()} fallback={<button class={`${button} shrink-0`} onClick={start}>{state.spec.base ? 'Compare with…' : 'Compare'}</button>}>
+                <CompareForm close={() => setEditing(false)} />
+            </Show>
+            <Show when={!editing() && target()}>
+                <button class={`${button} shrink-0`} title={`This pull request goes into ${target()}, not into ${state.spec.base}.`} onClick={() => void compareWith(target()!)}>Goes into {target()}</button>
+            </Show>
+        </>
     );
 }
 
