@@ -15,6 +15,16 @@ async function ok(response: Response, what: string): Promise<Response> {
 }
 
 /**
+ * The repository that a fork was made from, as `owner/name`: the one at the root of its network.
+ * Undefined for a repository that is no fork. Only the API knows this.
+ */
+export async function forkedFrom(fetch: Fetch, owner: string, repo: string): Promise<string | undefined> {
+    const response = await ok(await fetch(`${API}/repos/${owner}/${repo}`), `Reading ${owner}/${repo}`);
+    const found = await response.json();
+    return found.source?.full_name ?? found.parent?.full_name ?? undefined;
+}
+
+/**
  * Answers from GitHub's git endpoint instead of its API (./git.ts), directly or through this site's
  * server. The API allows an anonymous address 60 requests an hour, and this has no such allowance.
  */

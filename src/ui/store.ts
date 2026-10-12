@@ -2,6 +2,7 @@ import {createStore, produce} from 'solid-js/store';
 import {createEngine, type Engine} from '../engine/client.ts';
 import type {Problem} from '../engine/build.ts';
 import type {SessionInfo} from '../engine/protocol.ts';
+import {forkedFrom} from '../engine/sources/github.ts';
 import {demoSection, fetchPullRequest, type PullRequest} from '../engine/sources/pull.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeBase, parseGithubRef, type LinkSpec} from '../engine/spec.ts';
 
@@ -284,12 +285,34 @@ export async function defaultBranch(gh: string): Promise<string | undefined> {
     }
 }
 
-/** The branches whose head is the commit that `gh` names, the default branch first. None where the site has no reader to ask. */
-export async function branchesAt(gh: string): Promise<string[]> {
+export interface Branch {
+    /** The repository as `owner/name`. */
+    repo: string;
+    name: string;
+}
+
+/** What each fork that was looked up was made from. It costs a request of the visitor's allowance, so it is asked once. */
+const forks = new Map<string, Promise<string | undefined>>();
+
+/**
+ * The branches whose head is the commit that `gh` names, the default branch first. A fork is
+ * mostly held against the repository it was made from, so when the fork has no such branch, that
+ * repository is asked. None where the site has no reader to ask.
+ */
+export async function branchesAt(gh: string): Promise<Branch[]> {
     try {
         const {owner, repo, ref} = parseGithubRef(gh);
-        const response = await fetch(`${base}api/github/branches?repo=${owner}/${repo}&commit=${ref}`);
-        return response.ok ? (await response.json()).branches ?? [] : [];
+        const own = `${owner}/${repo}`;
+        const read = async (from: string): Promise<Branch[]> => {
+            const response = await fetch(`${base}api/github/branches?repo=${from}&commit=${ref}`);
+            const names: string[] = response.ok ? (await response.json()).branches ?? [] : [];
+            return names.map(name => ({repo: from, name}));
+        };
+        const found = await read(own);
+        if (found.length) return found;
+        if (!forks.has(own)) forks.set(own, forkedFrom((url, init) => fetch(url, init), owner, repo).catch(() => undefined));
+        const upstream = await forks.get(own);
+        return upstream ? await read(upstream) : [];
     } catch {
         return [];
     }

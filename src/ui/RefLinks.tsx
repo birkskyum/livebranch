@@ -1,6 +1,6 @@
 import {Show, createResource} from 'solid-js';
 import type {SessionInfo} from '../engine/protocol.ts';
-import {branchesAt} from './store.ts';
+import {branchesAt, type Branch} from './store.ts';
 
 interface Ref {
     /** The repository as `owner/name`. */
@@ -34,8 +34,9 @@ export function refLabel(gh: string | undefined, session: SessionInfo | undefine
 
 /**
  * The name of a ref and its commit, as links to GitHub. A source that names only a commit gets the
- * branch that the commit is the head of, in parentheses. `fallback` shows for a source that is not
- * on GitHub.
+ * branch that the commit is the head of, in parentheses. A branch of the repository that a fork
+ * was made from reads as GitHub writes it, `owner:branch`. `fallback` shows for a source that is
+ * not on GitHub.
  */
 export function RefLinks(props: {gh: string | undefined; session: SessionInfo | undefined; fallback?: string}) {
     const found = () => describeRef(props.gh, props.session);
@@ -47,6 +48,7 @@ export function RefLinks(props: {gh: string | undefined; session: SessionInfo | 
     const [asked] = createResource(unnamed, branchesAt);
     // An answer about the commit before this one is not shown.
     const branches = () => unnamed() && !asked.loading ? asked() ?? [] : [];
+    const branchName = (branch: Branch) => branch.repo === found().repo ? branch.name : `${branch.repo.split('/')[0]}:${branch.name}`;
     const link = 'hover:underline';
     return (
         <Show when={props.gh} fallback={<span>{props.fallback}</span>}>
@@ -58,8 +60,8 @@ export function RefLinks(props: {gh: string | undefined; session: SessionInfo | 
                     <a class={link} href={found().commitUrl} target="_blank" rel="noreferrer" title="Open the commit on GitHub">{found().commit}</a>
                 </Show>
                 <Show when={branches().length}>
-                    <span title={`This commit is the head of ${branches().join(', ')}.`}>
-                        (<a class={link} href={`https://github.com/${found().repo}/tree/${branches()[0]}`} target="_blank" rel="noreferrer">{branches()[0]}</a>
+                    <span title={`This commit is the head of ${branches().map(branchName).join(', ')}.`}>
+                        (<a class={link} href={`https://github.com/${branches()[0].repo}/tree/${branches()[0].name}`} target="_blank" rel="noreferrer">{branchName(branches()[0])}</a>
                         {branches().length > 1 ? ` +${branches().length - 1}` : ''})
                     </span>
                 </Show>
