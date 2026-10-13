@@ -110,13 +110,25 @@ function prepareRun(module, options) {
         caseInsensitive = false,
         tty = false,
     } = options;
+    // The request and the environment are NUL-separated, so a NUL in one
+    // value would turn it into more values (`["a.ts\0--outDir", "/x"]`).
+    // child_process refuses such values too.
+    for (const value of [cwd, ...args, ...Object.entries(env).flat()]) {
+        if (typeof value === "string" && value.includes("\0")) {
+            throw new TypeError(`ts-rust: cwd, args and env must not contain NUL bytes: ${JSON.stringify(value)}`);
+        }
+    }
     let memory;
     let staged;
     let stderrText = "";
+    const stderrDecoder = new TextDecoder();
     const u8 = () => new Uint8Array(memory.buffer);
     const dv = () => new DataView(memory.buffer);
 
-    const envBytes = Object.entries(env).map(([k, v]) => encoder.encode(`${k}=${v}\0`));
+    // An undefined value unsets the variable, as in child_process.
+    const envBytes = Object.entries(env)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => encoder.encode(`${k}=${v}\0`));
     const writeStrings = (list, ptrs, buf) => {
         const view = dv();
         let at = buf;
@@ -166,7 +178,7 @@ function prepareRun(module, options) {
                 const chunk = u8().slice(ptr, ptr + len);
                 if (fd === 1) stdout(chunk);
                 else {
-                    stderrText += decoder.decode(chunk);
+                    stderrText += stderrDecoder.decode(chunk, { stream: true });
                     stderr(chunk);
                 }
                 total += len;
@@ -222,14 +234,15 @@ function prepareRun(module, options) {
             if (diagnosticsJson) flags |= FLAG_DIAGNOSTICS_JSON;
             if (caseInsensitive) flags |= FLAG_CASE_INSENSITIVE;
             const request = encoder.encode([cwd, String(flags), ...args].join("\0"));
-            u8().set(request, exports.ts_input(request.length));
+            const input = exports.ts_input(request.length);
+            u8().set(request, input);
             return exports.ts_run;
         },
         /** The result of a `ts_run` call that returned `exitCode` or threw `error`. */
         result(exitCode, error) {
             if (error !== undefined) {
                 if (!(error instanceof WasiExit)) {
-                    error.stderr = stderrText;
+                    error.stderr = stderrText + stderrDecoder.decode();
                     throw error;
                 }
                 exitCode = error.code;
@@ -306,6 +319,7 @@ export function memoryFileSystem(files = new Map()) {
     const map = files instanceof Map ? files : new Map(Object.entries(files));
     const dirPrefix = path => (path.endsWith("/") ? path : `${path}/`);
     const isDir = path => {
+        if (path === "/") return true;
         const prefix = dirPrefix(path);
         for (const key of map.keys()) if (key.startsWith(prefix)) return true;
         return false;
@@ -315,7 +329,7 @@ export function memoryFileSystem(files = new Map()) {
         readFile: path => map.get(path),
         stat(path) {
             const text = map.get(path);
-            if (text !== undefined) return { isDirectory: false, size: text.length, mtimeMs: 0 };
+            if (text !== undefined) return { isDirectory: false, size: encoder.encode(text).length, mtimeMs: 0 };
             return isDir(path) ? { isDirectory: true, size: 0, mtimeMs: 0 } : undefined;
         },
         readDirectory(path) {
@@ -332,6 +346,11 @@ export function memoryFileSystem(files = new Map()) {
         },
         realpath: path => (map.has(path) || isDir(path) ? path : undefined),
         writeFile(path, data, append) {
+            if (isDir(path)) return `open ${path}: is a directory`;
+            for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1)) {
+                const parent = path.slice(0, slash);
+                if (map.has(parent)) return `mkdir ${parent}: not a directory`;
+            }
             const text = fileDecoder.decode(data);
             map.set(path, append ? (map.get(path) ?? "") + text : text);
         },

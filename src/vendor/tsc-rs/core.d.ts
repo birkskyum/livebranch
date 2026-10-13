@@ -95,13 +95,15 @@ export interface RunOptions {
 
 /** Thrown by WASI `proc_exit`; `runTsc` turns it into the exit code. */
 export class WasiExit extends Error {
+    constructor(code: number);
     code: number;
 }
 
 /**
  * Runs tsc once, in a new instance of `module`, on the calling thread. A
  * crash (a trap, or running out of stack or memory) throws, with the
- * stderr text so far in `error.stderr`.
+ * stderr text so far in `error.stderr`. A NUL byte in `cwd`, `args` or
+ * `env` throws a `TypeError`.
  */
 export function runTsc(
     module: WasmModule,

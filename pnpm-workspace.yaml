@@ -4,3 +4,11 @@ allowBuilds:
   node-liblzma: false
   tsc-rs: false
   workerd: true
+minimumReleaseAgeExclude:
+  - '@tsc-rs/darwin-arm64@0.6.0'
+  - '@tsc-rs/darwin-x64@0.6.0'
+  - '@tsc-rs/linux-arm64@0.6.0'
+  - '@tsc-rs/linux-x64@0.6.0'
+  - '@tsc-rs/win32-arm64@0.6.0'
+  - '@tsc-rs/win32-x64@0.6.0'
+  - tsc-rs@0.6.0

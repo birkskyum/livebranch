@@ -1,0 +1,41 @@
+Applied by scripts/build-wasm.sh to ts-rust v0.6.0 (a8c5b706) before the build.
+
+A flow walk keeps the flow nodes of the last file it read, with that file's index + 1 as the key
+and 0 for none yet. Synthetic flow nodes have the file index 0xffff_ffff. On a 32 bit target, as
+wasm is, that index + 1 wraps to 0 and is taken for a hit in the empty list, and the compiler
+panics with "flow_p1.rs:149: index out of bounds: the len is 0 but the index is 1". The native
+builds are 64 bit and do not wrap. The key is 64 bit here, so that it cannot.
+
+Drop this file when the pinned commit has the fix.
+
+diff --git a/crates/ts_goport/src/checker/flow_p1.rs b/crates/ts_goport/src/checker/flow_p1.rs
+index 35449e8a..3fbd5a1e 100644
+--- a/crates/ts_goport/src/checker/flow_p1.rs
++++ b/crates/ts_goport/src/checker/flow_p1.rs
+@@ -97,7 +97,7 @@ pub struct FlowState {
+     /// walk stays in one file, so most steps read their flow node with one
+     /// compare and one index, as Go reads `*flow`.
+     pub flow_nodes: &'static [FlowNode],
+-    pub flow_nodes_file: usize,
++    pub flow_nodes_file: u64,
+ }
+ 
+ /// All flow nodes of the file of `flow` when that file is in a static
+@@ -145,7 +145,7 @@ impl FlowState {
+         guard: &'g mut Option<FileRef<FlowNode>>,
+     ) -> &'g FlowNode {
+         let nodes = self.flow_nodes;
+-        if flow.file_index() + 1 == self.flow_nodes_file {
++        if flow.file_index() as u64 + 1 == self.flow_nodes_file {
+             return &nodes[flow.local_index()];
+         }
+         self.flow_data_slow(flow, guard)
+@@ -160,7 +160,7 @@ impl FlowState {
+         match static_file_flow_nodes(flow) {
+             Some(nodes) => {
+                 self.flow_nodes = nodes;
+-                self.flow_nodes_file = flow.file_index() + 1;
++                self.flow_nodes_file = flow.file_index() as u64 + 1;
+                 &nodes[flow.local_index()]
+             }
+             None => flow.get_flow_in(guard),

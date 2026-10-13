@@ -58,8 +58,8 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3
       tsc-rs:
-        specifier: ^0.2.0
-        version: 0.2.0
+        specifier: ^0.6.0
+        version: 0.6.0
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -838,23 +838,41 @@ packages:
   '@tokenizer/token@0.3.0':
     resolution: {integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==}
 
-  '@tsc-rs/darwin-arm64@0.2.0':
-    resolution: {integrity: sha512-sf8+KeIFuENwGM/rf09g0Yp6ttMxvJXUsM1rvc/h6RhsvFhzmwUwj3fe/YtHm80EoJCQ/TtFUT2CjHJu6Pl1EQ==}
+  '@tsc-rs/darwin-arm64@0.6.0':
+    resolution: {integrity: sha512-9aToB7RVGciaousuImyOqAx2xGiE9g+kCqrQaoR2uiGKxItPcRY+V/bsCP/VIg4O/qWrz6EU128gbyoxG5SKDA==}
     engines: {node: '>=16.20.0'}
     cpu: [arm64]
     os: [darwin]
 
-  '@tsc-rs/linux-arm64@0.2.0':
-    resolution: {integrity: sha512-3j4Res9jkcwt5H5M6MLoNZEvWbx49Pg2rjJcylpRk767wW3Rm4TboQkTJmhWTnjewT9CeTIjKaXn/DU3QRCxPQ==}
+  '@tsc-rs/darwin-x64@0.6.0':
+    resolution: {integrity: sha512-OT/KmLYe47I4G7cCueorXeWRihCvOVd0+3dud8AtoQ+s6UrtasM9oz+rxvA9oK+F7eAWnxxrg9OeHAvmQtZVEA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@tsc-rs/linux-arm64@0.6.0':
+    resolution: {integrity: sha512-BG+gJQ3rE2vk/XhkZ5XIg2utrkiBp4Mk5y+CKTuOfy88+P8RgkLmPmPlk/cY3ona7xm61Dg4T5LuNjsY7nxsrQ==}
     engines: {node: '>=16.20.0'}
     cpu: [arm64]
     os: [linux]
 
-  '@tsc-rs/linux-x64@0.2.0':
-    resolution: {integrity: sha512-gdzYIwgtFANiAdGi8xzDRk9o5gUXGeCEHYLggXmthclYlOJnZv82dAeOLIcrL//p6+K4SAogTKy2fFm8sARGtw==}
+  '@tsc-rs/linux-x64@0.6.0':
+    resolution: {integrity: sha512-I7OFBKqdLF9TzRYQ9VTRHFqKQiIAnpDo7EkSx/0jtwclYz9piosrual6yC3NP4sFaLSPCIMZkscHnGOs/6aCoA==}
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [linux]
+
+  '@tsc-rs/win32-arm64@0.6.0':
+    resolution: {integrity: sha512-/ZQTIaLdn7pSYrvvB0lTTQ9EREYNIRIfWC08qeMXwHIoABxDf0vKW8GdoOrZOB5RAOS6wmZYD9UpDfOW0qbmzg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@tsc-rs/win32-x64@0.6.0':
+    resolution: {integrity: sha512-0/2p/llHCgdopwRY/jsNpkS4foXHTeOGNsUKu/omX7FxXXhV57kodpDl+fjCZVPsInFHVGynrrN/fb2cfqw0cA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [win32]
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -1600,8 +1618,8 @@ packages:
     resolution: {integrity: sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww==}
     engines: {node: '>=14.16'}
 
-  tsc-rs@0.2.0:
-    resolution: {integrity: sha512-cALwflE/WoaqyD22552kPPVhDe3v4yMZ1X0LsLJFoBz2VrL6RrGE6Uuss7kfNpFpDICtSXYgE+muz5zV25qtVA==}
+  tsc-rs@0.6.0:
+    resolution: {integrity: sha512-n2Y3ZF6rylMvIJHVwqDf2r7y4SpR5a81OqG4/FlmcasIl4GJ80fLiBa2xEj/nRAHhheQxzbhw5GSe/oU7ZeImA==}
     engines: {node: '>=16.20.0'}
     hasBin: true
 
@@ -2398,13 +2416,22 @@ snapshots:
 
   '@tokenizer/token@0.3.0': {}
 
-  '@tsc-rs/darwin-arm64@0.2.0':
+  '@tsc-rs/darwin-arm64@0.6.0':
     optional: true
 
-  '@tsc-rs/linux-arm64@0.2.0':
+  '@tsc-rs/darwin-x64@0.6.0':
     optional: true
 
-  '@tsc-rs/linux-x64@0.2.0':
+  '@tsc-rs/linux-arm64@0.6.0':
+    optional: true
+
+  '@tsc-rs/linux-x64@0.6.0':
+    optional: true
+
+  '@tsc-rs/win32-arm64@0.6.0':
+    optional: true
+
+  '@tsc-rs/win32-x64@0.6.0':
     optional: true
 
   '@types/babel__core@7.20.5':
@@ -3124,11 +3151,14 @@ snapshots:
       '@tokenizer/token': 0.3.0
       ieee754: 1.2.1
 
-  tsc-rs@0.2.0:
+  tsc-rs@0.6.0:
     optionalDependencies:
-      '@tsc-rs/darwin-arm64': 0.2.0
-      '@tsc-rs/linux-arm64': 0.2.0
-      '@tsc-rs/linux-x64': 0.2.0
+      '@tsc-rs/darwin-arm64': 0.6.0
+      '@tsc-rs/darwin-x64': 0.6.0
+      '@tsc-rs/linux-arm64': 0.6.0
+      '@tsc-rs/linux-x64': 0.6.0
+      '@tsc-rs/win32-arm64': 0.6.0
+      '@tsc-rs/win32-x64': 0.6.0
 
   tslib@2.8.1:
     optional: true

@@ -184,9 +184,11 @@ pnpm build          # static files in dist, for any host that serves over HTTPS
 pnpm exec wrangler dev   # the built app and the API in a local workerd
 ```
 
-`public/tsc/ts_rust.wasm` is built from ts-rust at the commit that `scripts/build-wasm.sh` pins.
-The script needs Rust with the `wasm32-wasip1` target. The module here is built without wasm-opt
-(5.9 MB, 1.8 MB with Brotli).
+`public/tsc/ts_rust.wasm` is built from ts-rust at the commit that `scripts/build-wasm.sh` pins
+(v0.6.0), with the fix in `scripts/ts-rust.patch`. The script needs Rust with the `wasm32-wasip1`
+target. The module here is the faster of ts-rust's two builds, without wasm-opt (7.7 MB, 2.1 MB
+with Brotli). Its smallest build is 1.5 MB smaller and takes 1.7 times as long to type check
+maplibre-gl-js.
 
 ## Limits
 
