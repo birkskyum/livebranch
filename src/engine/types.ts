@@ -1,4 +1,4 @@
-import {entryPage, inPage, loadClosure, pageEntries, problem, resolveContext, type Problem} from './build.ts';
+import {crashProblems, entryPage, inPage, loadClosure, pageEntries, problem, resolveContext, type Problem} from './build.ts';
 import type {Env, Project} from './project.ts';
 import {parseJsonc} from './project.ts';
 import {isSourcePath} from './resolve.ts';
@@ -147,9 +147,10 @@ export async function typeCheck(project: Project, env: Env, own: Set<string>): P
             run = await tsc(module, vfs, ['-p', TSCONFIG], options);
         }
         const reported = (file: string | undefined) => file !== undefined && (own.has(file) || page.inline.has(file));
-        return run.diagnostics
+        const found = run.diagnostics
             .filter(diagnostic => reported(diagnostic.fileName) && !(MISSING_MODULE.has(diagnostic.code) && !/'\.{0,2}\//.test(diagnostic.text)))
             .map(diagnostic => inPage(problem(diagnostic), page.inlineLines));
+        return [...crashProblems(run, 'the types are not checked'), ...found];
     } finally {
         for (const path of page.inline.keys()) vfs.remove(path);
     }

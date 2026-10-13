@@ -4,7 +4,7 @@ import type {Env, Progress, Project} from './project.ts';
 import {parseJsonc} from './project.ts';
 import {isSourcePath, resolveSpecifier, scanImports, type ResolveContext} from './resolve.ts';
 import {assetModuleCode, assetModulePath, lexerReady, rewriteModule, type AssetModule} from './rewrite.ts';
-import {sourceCost, TooLargeError, tsc, type Diagnostic, type TscOptions} from './tsc.ts';
+import {sourceCost, TooLargeError, tsc, type Diagnostic, type TscOptions, type TscRun} from './tsc.ts';
 import type {FileData} from './vfs.ts';
 
 export interface Output {
@@ -178,6 +178,12 @@ export function problem(diagnostic: Diagnostic): Problem {
     };
 }
 
+/** The problem of a run that the compiler gave up on. `lost` says what the run then lacks. */
+export function crashProblems(run: TscRun, lost: string): Problem[] {
+    if (!run.crash) return [];
+    return [{file: undefined, line: undefined, column: undefined, code: 0, category: 'error', text: `The compiler crashed, so ${lost}. ${run.crash}`}];
+}
+
 /** The source file that the compiler wrote `emitted` for. */
 function sourceOf(emitted: string, read: Set<string>): string | undefined {
     const path = emitted.slice(OUT.length);
@@ -240,6 +246,7 @@ export async function compile(project: Project, env: Env, entries: string[], pro
         problems.length = 0;
         modules.clear();
         assets.clear();
+        problems.push(...crashProblems(run, 'modules are missing from this build'));
         problems.push(...run.diagnostics.filter(diagnostic => diagnostic.code !== MISSING_GLOBAL_TYPE).map(problem));
         const imported = new Set<string>();
         for (const [emitted, code] of run.written) {
@@ -256,7 +263,8 @@ export async function compile(project: Project, env: Env, entries: string[], pro
         }
         sources = modules.size;
         const unseen = [...imported].filter(path => !modules.has(path));
-        if (!unseen.length) break;
+        // After a crash the files that were not written look like ones that the scan missed.
+        if (!unseen.length || run.crash) break;
         roots = [...roots, ...unseen];
     }
 

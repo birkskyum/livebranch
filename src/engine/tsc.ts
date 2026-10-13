@@ -6,6 +6,8 @@ export type {Diagnostic, WasmModule};
 
 export interface TscRun {
     exitCode: number;
+    /** What the compiler printed when it gave up in the middle of the run. What it wrote and reported is then not all. */
+    crash: string | undefined;
     diagnostics: Diagnostic[];
     /** Files that the compiler wrote. */
     written: Map<string, string>;
@@ -117,5 +119,8 @@ export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options:
         stderr: chunk => stderr.push(chunk),
     });
     const text = (chunks: Uint8Array[]) => chunks.map(chunk => new TextDecoder().decode(chunk)).join('');
-    return {exitCode, diagnostics: diagnostics ?? [], written, read, misses, stdout: text(stdout), stderr: text(stderr)};
+    const errors = text(stderr);
+    // A panic prints one line and ends the run with its exit code, as a run with diagnostics ends.
+    const crash = /^tsgo: panic.*$/m.exec(errors)?.[0];
+    return {exitCode, crash, diagnostics: diagnostics ?? [], written, read, misses, stdout: text(stdout), stderr: errors};
 }

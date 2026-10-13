@@ -23,7 +23,8 @@ export async function checkProject(project: Project, env: Env, ranSetup = false)
     const skippedSetup = ranSetup ? [] : project.config.setup ?? [];
     const built = await build(project, env);
     const own = new Set([project.entry, ...project.overlay]);
-    const compiled = skippedSetup.length ? built.problems.filter(problem => problem.file !== undefined && own.has(problem.file)) : built.problems;
+    // A problem without a file, as a crash of the compiler is, does not come from files that the setup would have made.
+    const compiled = skippedSetup.length ? built.problems.filter(problem => problem.file === undefined || own.has(problem.file)) : built.problems;
     return {
         source: project.label,
         commit: project.commit,
