@@ -8,8 +8,12 @@
             "dom",
             "dom.iterable"
         ],
-        "jsx": "preserve",
-        "jsxImportSource": "solid-js",
+        "jsx": "react-jsx",
+        "paths": {
+            "@/*": [
+                "./src/*"
+            ]
+        },
         "strict": true,
         "noEmit": true,
         "skipLibCheck": true,

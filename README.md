@@ -35,7 +35,9 @@ the project's template. For maplibre-gl-js that page has the stylesheet and a fu
 With `base=main` the same script runs against main and against the branch, side by side. The
 Compare button in the header does the same: its first click adds the repository's default branch,
 and after that it changes the ref or stops comparing. A pull request that is opened by its GitHub
-address (`livebranch.dev/owner/repo/pull/123`) starts next to the default branch.
+address (`livebranch.dev/owner/repo/pull/123`) starts next to the default branch. Each side has
+its own console, under its preview. The line between the code and the previews, and the one above
+the panel below them, can be dragged, and the app keeps where they were for the next visit.
 
 A pull request can carry its demo in its description, as a code block that is marked for this
 site. Opened by its address, the pull request then runs that demo on both sides, so the address is
@@ -75,7 +77,7 @@ import of the project's own package name resolves to `src/index.ts`.
 4. Imports in the output are rewritten to the paths of their sources and to CDN URLs, and a
    service worker serves the result from the Cache API under `~p/<build id>/`.
 5. In the background, tsc-rs type checks the page and the link's files against the project and
-   the type declarations of its npm dependencies. The problems show up next to the preview.
+   the type declarations of its npm dependencies. The problems show up under the preview.
 
 A build is kept in the browser by a hash of its inputs. Opening the same link again takes a few
 milliseconds. The first build of a maplibre-gl-js commit takes about four seconds.

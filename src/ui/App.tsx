@@ -1,13 +1,14 @@
-import {Match, Switch, createEffect, onCleanup, onMount} from 'solid-js';
+import {useEffect} from 'react';
 import {Landing} from './Landing.tsx';
 import {Workbench} from './Workbench.tsx';
-import {demoBlock, edit, getEngine, openFromLocation, shareLink, state} from './store.ts';
+import {current, demoBlock, edit, getEngine, openFromLocation, shareLink, useStore, type State} from './store.ts';
 
 declare global {
     interface Window {
         /** For agents and tests that drive the page: the app's state and the project shell. */
         __livebranch: {
-            state: typeof state;
+            /** The state at the moment it is read. */
+            readonly state: State;
             exec(command: string): Promise<{stdout: string; stderr: string; exitCode: number}>;
             edit(path: string, text: string): void;
             link(resultOnly?: boolean): Promise<string>;
@@ -18,23 +19,29 @@ declare global {
 }
 
 export function App() {
-    onMount(() => {
-        window.__livebranch = {state, exec: command => getEngine().exec(command), edit, link: resultOnly => shareLink(resultOnly), block: demoBlock};
+    const phase = useStore(state => state.phase);
+    useEffect(() => {
+        window.__livebranch = {
+            get state() {
+                return current();
+            },
+            exec: command => getEngine().exec(command),
+            edit,
+            link: resultOnly => shareLink(resultOnly),
+            block: demoBlock,
+        };
         void openFromLocation();
         const reopen = () => void openFromLocation();
         window.addEventListener('hashchange', reopen);
-        onCleanup(() => window.removeEventListener('hashchange', reopen));
-    });
-    createEffect(() => {
-        document.documentElement.dataset.livebranch = state.phase;
-    });
+        return () => window.removeEventListener('hashchange', reopen);
+    }, []);
+    useEffect(() => {
+        document.documentElement.dataset.livebranch = phase;
+    }, [phase]);
 
     return (
-        <div class="h-dvh bg-white text-sm text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-            <Switch>
-                <Match when={state.phase === 'landing'}><Landing /></Match>
-                <Match when={state.phase !== 'landing'}><Workbench /></Match>
-            </Switch>
+        <div className="h-dvh bg-background text-sm text-foreground">
+            {phase === 'landing' ? <Landing /> : <Workbench />}
         </div>
     );
 }

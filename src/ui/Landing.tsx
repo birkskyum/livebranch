@@ -1,6 +1,9 @@
-import {createSignal} from 'solid-js';
+import {useState, type FormEvent} from 'react';
+import {Button} from '@/components/ui/button.tsx';
+import {Input} from '@/components/ui/input.tsx';
+import {Textarea} from '@/components/ui/textarea.tsx';
 import {encodeSpec, isPullRequest, normalizeGithubSource} from '../engine/spec.ts';
-import {defaultBranch, navigate} from './store.ts';
+import {REPOSITORY, defaultBranch, navigate} from './store.ts';
 
 const STARTER = `<!doctype html>
 <meta charset="utf-8">
@@ -16,57 +19,56 @@ document.querySelector('#out')!.textContent = String(distance({x: 0, y: 0}, {x: 
 `;
 
 export function Landing() {
-    const [source, setSource] = createSignal('');
-    const [page, setPage] = createSignal(STARTER);
+    const [source, setSource] = useState('');
+    const [page, setPage] = useState(STARTER);
 
-    const open = async (event: SubmitEvent) => {
+    const open = async (event: FormEvent) => {
         event.preventDefault();
-        const {gh, entry} = source().trim() ? normalizeGithubSource(source()) : {gh: undefined, entry: undefined};
-        const files = page().trim() && !(gh && page() === STARTER) ? {'index.html': page()} : undefined;
+        const {gh, entry} = source.trim() ? normalizeGithubSource(source) : {gh: undefined, entry: undefined};
+        const files = page.trim() && !(gh && page === STARTER) ? {'index.html': page} : undefined;
         // A pull request opens next to the default branch, as its address in the path does.
         const base = gh && isPullRequest(gh) ? await defaultBranch(gh) : undefined;
         navigate(await encodeSpec({gh, base, entry, files}));
     };
 
+    const link = 'text-blue-600 underline dark:text-blue-400';
     return (
-        <main class="mx-auto flex h-full max-w-2xl flex-col gap-6 overflow-auto px-6 py-12">
-            <header class="flex flex-col gap-2">
-                <h1 class="text-2xl font-semibold tracking-tight">livebranch</h1>
-                <p class="text-neutral-600 dark:text-neutral-400">
+        <main className="mx-auto flex h-full max-w-2xl flex-col gap-6 overflow-auto px-6 py-12">
+            <header className="flex flex-col gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight">livebranch</h1>
+                <p className="text-muted-foreground">
                     Runs a TypeScript project in the browser. The TypeScript compiler (tsc-rs, as WebAssembly) compiles the
                     sources here, straight from a GitHub commit, and the page loads the result. A link holds everything, so
                     there is no account and no server.
                 </p>
             </header>
-            <form class="flex flex-col gap-4" onSubmit={open}>
-                <label class="flex flex-col gap-1">
-                    <span class="font-medium">GitHub source (optional)</span>
-                    <input
-                        class="rounded border border-neutral-300 bg-transparent px-3 py-2 font-mono dark:border-neutral-700"
+            <form className="flex flex-col gap-4" onSubmit={open}>
+                <label className="flex flex-col gap-1">
+                    <span className="font-medium">GitHub source (optional)</span>
+                    <Input
+                        className="font-mono"
                         placeholder="owner/repo@branch, or the URL of a branch, a pull request or an example file"
-                        value={source()}
-                        onInput={event => setSource(event.currentTarget.value)}
+                        value={source}
+                        onChange={event => setSource(event.currentTarget.value)}
                     />
                 </label>
-                <label class="flex flex-col gap-1">
-                    <span class="font-medium">Page</span>
-                    <textarea
-                        class="h-64 rounded border border-neutral-300 bg-transparent px-3 py-2 font-mono text-xs dark:border-neutral-700"
-                        spellcheck={false}
-                        value={page()}
-                        onInput={event => setPage(event.currentTarget.value)}
-                    />
+                <label className="flex flex-col gap-1">
+                    <span className="font-medium">Page</span>
+                    <Textarea className="h-64 font-mono text-xs md:text-xs" spellCheck={false} value={page} onChange={event => setPage(event.currentTarget.value)} />
                 </label>
-                <button class="self-start rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700" type="submit">Open</button>
+                <Button className="self-start" type="submit">Open</Button>
             </form>
-            <p class="text-neutral-600 dark:text-neutral-400">
-                Try <a class="text-blue-600 underline dark:text-blue-400" href="#gh=maplibre/maplibre-gl-js@main">maplibre/maplibre-gl-js@main</a>,
+            <p className="text-muted-foreground">
+                Try <a className={link} href="#gh=maplibre/maplibre-gl-js@main">maplibre/maplibre-gl-js@main</a>,
                 built from source in this tab.
             </p>
-            <p class="text-neutral-600 dark:text-neutral-400">
-                Put <code class="font-mono">livebranch.dev/</code> in front of any GitHub URL of a branch, a pull request or an example
-                file to open it here. The <a class="text-blue-600 underline dark:text-blue-400" href="./llms.txt">guide</a> has the
+            <p className="text-muted-foreground">
+                Put <code className="font-mono">livebranch.dev/</code> in front of any GitHub URL of a branch, a pull request or an example
+                file to open it here. The <a className={link} href="./llms.txt">guide</a> has the
                 link format and the API, for people and for agents.
+            </p>
+            <p className="text-muted-foreground">
+                The code of livebranch is on <a className={link} href={REPOSITORY} target="_blank" rel="noreferrer">GitHub</a>, under the MIT license.
             </p>
         </main>
     );

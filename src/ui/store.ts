@@ -1,7 +1,8 @@
-import {createStore, produce} from 'solid-js/store';
+import {produce} from 'immer';
+import {create} from 'zustand';
 import {createEngine, type Engine} from '../engine/client.ts';
 import type {Problem} from '../engine/build.ts';
-import type {SessionInfo} from '../engine/protocol.ts';
+import type {FileEntry, SessionInfo} from '../engine/protocol.ts';
 import {forkedFrom} from '../engine/sources/github.ts';
 import {demoSection, fetchPullRequest, type PullRequest} from '../engine/sources/pull.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeBase, parseGithubRef, type LinkSpec} from '../engine/spec.ts';
@@ -47,7 +48,7 @@ export interface State {
     checking: boolean;
 }
 
-export const [state, setState] = createStore<State>({
+export const useStore = create<State>()(() => ({
     phase: 'landing',
     spec: {},
     step: '',
@@ -68,7 +69,18 @@ export const [state, setState] = createStore<State>({
     building: false,
     typeProblems: [],
     checking: false,
-});
+}));
+
+/** The state now, for code outside the components. */
+export const current = useStore.getState;
+
+/** Changes the state, with the changed fields or with a recipe that changes a draft of it. */
+export function setState(change: Partial<State> | ((draft: State) => void)): void {
+    useStore.setState(typeof change === 'function' ? produce(change) : change);
+}
+
+/** Where the code of livebranch is. */
+export const REPOSITORY = 'https://github.com/birkskyum/livebranch';
 
 /** The URL of the app's directory. The service worker's scope and the engine's assets hang off it. */
 export const base = new URL('./', location.href.split(/[?#]/)[0]).href;
@@ -79,7 +91,7 @@ let baseEngine: Engine | undefined;
 export function getEngine(): Engine {
     if (!engine) {
         engine = createEngine();
-        engine.events.step = (name, detail) => setState('step', detail ? `${name}: ${detail}` : name);
+        engine.events.step = (name, detail) => setState({step: detail ? `${name}: ${detail}` : name});
     }
     return engine;
 }
@@ -110,9 +122,29 @@ async function ensureServiceWorker(): Promise<void> {
     throw new Error('The service worker does not control this page. Reload it without holding shift.');
 }
 
+/**
+ * What the code panel shows of the open project, asked for once per link. The engine answers one
+ * call at a time, so a build asks for these before its type check, which can take seconds.
+ */
+let listing: Promise<FileEntry[]> | undefined;
+const reads = new Map<string, Promise<string | undefined>>();
+
+/** The project's files. Edits keep the list. */
+export function listFiles(): Promise<FileEntry[]> {
+    listing ??= getEngine().files();
+    return listing;
+}
+
+/** The text of a project file as the link has it, without the edits. */
+export function readFile(path: string): Promise<string | undefined> {
+    let read = reads.get(path);
+    if (!read) reads.set(path, read = getEngine().read(path));
+    return read;
+}
+
 function finish(session: SessionInfo): void {
     const errors = session.problems.some(problem => problem.category === 'error');
-    setState(produce(draft => {
+    setState(draft => {
         draft.session = session;
         if (session.gh && session.gh !== draft.spec.gh) {
             draft.spec.gh = session.gh;
@@ -128,7 +160,10 @@ function finish(session: SessionInfo): void {
         draft.checking = true;
         if (errors) draft.tab = 'problems';
         else if (draft.tab === 'problems') draft.tab = 'console';
-    }));
+    });
+    const {file, edits} = current();
+    void listFiles();
+    if (file && !(file in edits)) void readFile(file);
     void checkTypes(session.id);
 }
 
@@ -140,13 +175,13 @@ async function checkTypes(id: string): Promise<void> {
     } catch (error) {
         console.warn('The type check failed.', error);
     }
-    if (state.session?.id !== id) return;
+    if (current().session?.id !== id) return;
     setState({typeProblems: problems, checking: false});
-    if (problems.some(problem => problem.category === 'error')) setState('tab', 'problems');
+    if (problems.some(problem => problem.category === 'error')) setState({tab: 'problems'});
 }
 
 /** The problems of the build and of the type check, after a description that could not be read. */
-export function allProblems(): Problem[] {
+export function allProblems(state: Pick<State, 'pullProblem' | 'session' | 'typeProblems'>): Problem[] {
     const unread: Problem[] = state.pullProblem ? [{file: undefined, line: undefined, column: undefined, code: 0, category: 'warning', text: state.pullProblem}] : [];
     return [...unread, ...state.session?.problems ?? [], ...state.typeProblems];
 }
@@ -182,8 +217,10 @@ export async function openFromLocation(): Promise<void> {
     // A result link starts with only the preview. The code and the console are one click away.
     const resultOnly = params.get('view') === 'result';
     setState({spec, showCode: !resultOnly, showPanel: !resultOnly, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
+    listing = undefined;
+    reads.clear();
     if (isEmptySpec(spec)) {
-        setState('phase', 'landing');
+        setState({phase: 'landing'});
         return;
     }
     setState({phase: 'loading', step: 'starting'});
@@ -196,13 +233,13 @@ export async function openFromLocation(): Promise<void> {
         const options = {base, cache: !params.has('nocache') && !import.meta.env.DEV};
         const against = baseSource(spec);
         const baseSession = against === undefined ? undefined : getBaseEngine().open({...opened, gh: against, base: undefined}, options).catch((error: unknown) => {
-            if (opening === openings) setState('baseError', error instanceof Error ? error.message : String(error));
+            if (opening === openings) setState({baseError: error instanceof Error ? error.message : String(error)});
             return undefined;
         });
         const session = await getEngine().open(opened, options);
         if (opening === openings) finish(session);
         const built = await baseSession;
-        if (opening === openings) setState('base', built);
+        if (opening === openings) setState({base: built});
     } catch (error) {
         if (opening === openings) setState({phase: 'failed', error: error instanceof Error ? error.message : String(error)});
     }
@@ -212,18 +249,18 @@ let editTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Records an edit and rebuilds shortly after the last keystroke. */
 export function edit(path: string, text: string): void {
-    setState('edits', path, text);
+    setState(draft => { draft.edits[path] = text; });
     clearTimeout(editTimer);
     editTimer = setTimeout(async () => {
-        setState('building', true);
+        setState({building: true});
         try {
-            const comparing = state.base !== undefined;
+            const {base, edits} = current();
             const [session, built] = await Promise.all([
-                getEngine().update({...state.edits}),
-                comparing ? getBaseEngine().update({...state.edits}) : undefined,
+                getEngine().update({...edits}),
+                base !== undefined ? getBaseEngine().update({...edits}) : undefined,
             ]);
             finish(session);
-            if (comparing) setState('base', built);
+            if (base !== undefined) setState({base: built});
         } catch (error) {
             setState({building: false, error: error instanceof Error ? error.message : String(error)});
         }
@@ -232,7 +269,7 @@ export function edit(path: string, text: string): void {
 
 /** Whether only the preview shows. */
 export function isResultOnly(): boolean {
-    return !state.showCode && !state.showPanel;
+    return !current().showCode && !current().showPanel;
 }
 
 /** Shows or hides a part of the workbench, and keeps the address in step so that it can be copied. */
@@ -246,6 +283,7 @@ export function setView(change: Partial<Pick<State, 'showCode' | 'showPanel' | '
 
 /** The files that the open project runs on top of its source: the link's, or else the description's, with the edits. */
 function demoFiles(): Record<string, string> {
+    const state = current();
     const files: Record<string, string> = {...state.pull?.files, ...state.spec.files};
     for (const [path, text] of Object.entries(state.edits)) files[path.slice(1)] = text;
     return files;
@@ -257,8 +295,9 @@ function demoFiles(): Record<string, string> {
  * following the description.
  */
 export async function shareLink(resultOnly = isResultOnly(), change: Partial<LinkSpec> = {}): Promise<string> {
-    const edited = Object.keys(state.edits).length > 0;
-    const params = await encodeSpec({...state.spec, files: edited ? demoFiles() : state.spec.files, ...change});
+    const {edits, spec} = current();
+    const edited = Object.keys(edits).length > 0;
+    const params = await encodeSpec({...spec, files: edited ? demoFiles() : spec.files, ...change});
     return `${base}#${resultOnly ? 'view=result&' : ''}${params}`;
 }
 
@@ -268,6 +307,7 @@ export async function shareLink(resultOnly = isResultOnly(), change: Partial<Lin
  * demo of its own the project's stock demo is what a new one starts from.
  */
 export async function demoBlock(): Promise<string> {
+    const state = current();
     const files = demoFiles();
     const stock = state.session?.file;
     if (!Object.keys(files).length && stock) files[stock.slice(1)] = await getEngine().read(stock) ?? '';

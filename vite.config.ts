@@ -1,8 +1,9 @@
 import {existsSync, readFileSync, readdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
 import {defineConfig, type Plugin} from 'vite';
-import solid from 'vite-plugin-solid';
 
 /** The directory of the npm package that a module file belongs to. */
 function packageRoot(file: string): string | undefined {
@@ -49,7 +50,8 @@ function notices(write: boolean): Plugin {
 // The app is served from any directory: the service worker's scope is the directory of the page.
 export default defineConfig({
     base: './',
-    plugins: [solid(), tailwindcss(), notices(true)],
+    plugins: [react(), tailwindcss(), notices(true)],
+    resolve: {alias: {'@': fileURLToPath(new URL('./src', import.meta.url))}},
     worker: {
         format: 'es',
         plugins: () => [notices(false)],

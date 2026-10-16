@@ -1,31 +1,30 @@
-import {Show, onCleanup, onMount} from 'solid-js';
-import {produce} from 'solid-js/store';
+import {useEffect, useRef, type RefObject} from 'react';
+import {useShallow} from 'zustand/react/shallow';
 import type {SessionInfo} from '../engine/protocol.ts';
 import {baseSource} from '../engine/spec.ts';
 import {RefLinks, refLabel} from './RefLinks.tsx';
-import {setState, state, type ConsoleEntry} from './store.ts';
+import {setState, useStore, type ConsoleEntry} from './store.ts';
 
 const MAX_ENTRIES = 500;
 
-function Frame(props: {session: SessionInfo; gh: string | undefined; labelled: boolean; ref: (frame: HTMLIFrameElement) => void}) {
-    // A new run gets a new frame, so that no state of the old page survives.
-    const key = () => `${props.session.url}#${state.runs}`;
+function Frame(props: {session: SessionInfo; gh: string | undefined; labelled: boolean; frame: RefObject<HTMLIFrameElement | null>}) {
+    const runs = useStore(state => state.runs);
     return (
-        <div class="relative min-w-0 flex-1">
-            <Show when={key()} keyed>
-                <iframe
-                    ref={props.ref}
-                    class="h-full w-full border-0 bg-white"
-                    title={props.labelled ? `Preview of ${refLabel(props.gh, props.session)}` : 'Preview'}
-                    src={props.session.url}
-                    allow="geolocation; fullscreen; clipboard-write; xr-spatial-tracking"
-                />
-            </Show>
-            <Show when={props.labelled}>
-                <span class="absolute left-2 top-2 rounded bg-neutral-900/80 px-2 py-0.5 font-mono text-xs text-white">
+        <div className="relative min-w-0 flex-1">
+            {/* A new run gets a new frame, so that no state of the old page survives. */}
+            <iframe
+                key={`${props.session.url}#${runs}`}
+                ref={props.frame}
+                className="h-full w-full border-0 bg-white"
+                title={props.labelled ? `Preview of ${refLabel(props.gh, props.session)}` : 'Preview'}
+                src={props.session.url}
+                allow="geolocation; fullscreen; clipboard-write; xr-spatial-tracking"
+            />
+            {props.labelled && (
+                <span className="absolute top-2 left-2 rounded bg-neutral-900/80 px-2 py-0.5 font-mono text-xs text-white">
                     <RefLinks gh={props.gh} session={props.session} />
                 </span>
-            </Show>
+            )}
         </div>
     );
 }
@@ -35,36 +34,34 @@ function Frame(props: {session: SessionInfo; gh: string | undefined; labelled: b
  * arrives as messages from the script that the build put into it, and each frame has its own.
  */
 export function Preview() {
-    let head: HTMLIFrameElement | undefined;
-    let base: HTMLIFrameElement | undefined;
-    const comparing = () => baseSource(state.spec) !== undefined;
+    const head = useRef<HTMLIFrameElement>(null);
+    const base = useRef<HTMLIFrameElement>(null);
+    const {session, baseSession, baseError, spec, step} = useStore(useShallow(state => ({session: state.session, baseSession: state.base, baseError: state.baseError, spec: state.spec, step: state.step})));
+    const comparing = baseSource(spec) !== undefined;
 
-    onMount(() => {
+    useEffect(() => {
         const receive = (event: MessageEvent) => {
-            const fromBase = base !== undefined && event.source === base.contentWindow;
-            if ((!fromBase && event.source !== head?.contentWindow) || event.data?.livebranch !== 'console') return;
+            const fromBase = base.current !== null && event.source === base.current.contentWindow;
+            if ((!fromBase && event.source !== head.current?.contentWindow) || event.data?.livebranch !== 'console') return;
             const entry: ConsoleEntry = {level: event.data.level, text: (event.data.args as string[]).join(' ')};
-            setState(produce(draft => {
+            setState(draft => {
                 const logged = fromBase ? draft.baseConsole : draft.console;
                 logged.push(entry);
                 if (logged.length > MAX_ENTRIES) logged.shift();
-            }));
+            });
         };
         window.addEventListener('message', receive);
-        onCleanup(() => window.removeEventListener('message', receive));
-    });
+        return () => window.removeEventListener('message', receive);
+    }, []);
 
-    const waiting = (text: string) => <div class="flex min-w-0 flex-1 items-center justify-center whitespace-pre-wrap p-4 text-neutral-500">{text}</div>;
+    const waiting = (text: string) => <div className="flex min-w-0 flex-1 items-center justify-center p-4 whitespace-pre-wrap text-muted-foreground">{text}</div>;
+    if (!session) return <div className="flex h-full">{waiting(`${step || 'starting'}…`)}</div>;
     return (
-        <Show when={state.session} fallback={<div class="flex h-full">{waiting(`${state.step || 'starting'}…`)}</div>}>
-            <div class="flex h-full gap-px bg-neutral-300 dark:bg-neutral-700">
-                <Show when={comparing()}>
-                    <Show when={state.base} fallback={waiting(state.baseError || `building ${state.spec.base}…`)}>
-                        <Frame session={state.base!} gh={baseSource(state.spec)} labelled ref={frame => { base = frame; }} />
-                    </Show>
-                </Show>
-                <Frame session={state.session!} gh={state.spec.gh} labelled={comparing()} ref={frame => { head = frame; }} />
-            </div>
-        </Show>
+        <div className="flex h-full gap-px bg-border">
+            {comparing && (baseSession
+                ? <Frame session={baseSession} gh={baseSource(spec)} labelled frame={base} />
+                : waiting(baseError || `building ${spec.base}…`))}
+            <Frame session={session} gh={spec.gh} labelled={comparing} frame={head} />
+        </div>
     );
 }

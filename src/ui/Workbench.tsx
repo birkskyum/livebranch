@@ -1,79 +1,91 @@
-import {For, Match, Show, Switch, createMemo, createSignal, onMount} from 'solid-js';
+import {MarkGithubIcon} from '@primer/octicons-react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
+import {useDefaultLayout} from 'react-resizable-panels';
+import {useShallow} from 'zustand/react/shallow';
+import {Button} from '@/components/ui/button.tsx';
+import {Input} from '@/components/ui/input.tsx';
+import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@/components/ui/resizable.tsx';
+import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs.tsx';
+import {cn} from '@/lib/utils.ts';
+import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {CodePanel} from './CodePanel.tsx';
 import {Preview} from './Preview.tsx';
-import {Terminal} from './Terminal.tsx';
-import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {RefLinks, refLabel} from './RefLinks.tsx';
-import {allProblems, compareWith, defaultBranch, demoBlock, setState, setView, shareLink, state, type ConsoleEntry, type Tab} from './store.ts';
+import {Terminal} from './Terminal.tsx';
+import {REPOSITORY, allProblems, compareWith, current, defaultBranch, demoBlock, setState, setView, shareLink, useStore, type ConsoleEntry, type State, type Tab} from './store.ts';
 
-const button = 'rounded px-2 py-1 hover:bg-neutral-200 dark:hover:bg-neutral-800';
+/** The line takes the pointer a few pixels to both sides, also over a preview, which would otherwise take it first. */
+const handle = 'z-10 after:w-2 aria-[orientation=horizontal]:after:h-2';
+
+/** A header button that shows whether its part of the workbench is open. */
+const toggle = 'aria-pressed:bg-muted aria-pressed:text-foreground';
 
 /** What both pages of a comparison logged, or the one page. */
-const allLogged = () => [...state.console, ...state.baseConsole];
+const useLogged = () => useStore(useShallow((state: State) => [...state.console, ...state.baseConsole]));
+const useProblems = () => useStore(useShallow((state: State) => allProblems(state)));
 
 function seconds(ms: number): string {
     return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
 function Status() {
-    const summary = createMemo(() => {
-        const session = state.session;
-        if (!session) return '';
+    const {phase, building, step, session, pull} = useStore(useShallow(state => ({phase: state.phase, building: state.building, step: state.step, session: state.session, pull: state.pull})));
+    let text = '';
+    if (phase === 'loading' || building) text = `${step || 'building'}…`;
+    else if (phase === 'failed') text = 'failed';
+    else if (phase === 'ready' && session) {
         const built = session.cached ? `from cache, ${seconds(session.ms)}` : `${session.sources} modules in ${seconds(session.ms)}`;
-        return state.pull && Object.keys(state.pull.files).length ? `${built}, demo from the description` : built;
-    });
-    return (
-        <span class="truncate text-neutral-500" data-testid="status">
-            <Switch>
-                <Match when={state.phase === 'loading' || state.building}>{state.step || 'building'}…</Match>
-                <Match when={state.phase === 'failed'}>failed</Match>
-                <Match when={state.phase === 'ready'}>{summary()}</Match>
-            </Switch>
-        </span>
-    );
+        text = pull && Object.keys(pull.files).length ? `${built}, demo from the description` : built;
+    }
+    return <span className="truncate text-muted-foreground" data-testid="status">{text}</span>;
 }
 
 function Header() {
-    const [copied, setCopied] = createSignal<'link' | 'block'>();
+    const [copied, setCopied] = useState<'link' | 'block'>();
+    const {gh, session, showCode, showPanel, tab} = useStore(useShallow(state => ({gh: state.spec.gh, session: state.session, showCode: state.showCode, showPanel: state.showPanel, tab: state.tab})));
+    const problems = useProblems();
+    const logged = useLogged();
     const copy = async (what: 'link' | 'block') => {
         await navigator.clipboard.writeText(await (what === 'link' ? shareLink() : demoBlock()));
         setCopied(what);
-        setTimeout(() => setCopied(), 1500);
+        setTimeout(() => setCopied(undefined), 1500);
     };
-    const errors = () => allProblems().filter(problem => problem.category === 'error').length;
-    const logged = () => allLogged().length;
-    const loggedErrors = () => allLogged().some(entry => entry.level === 'error');
+    const errors = problems.some(problem => problem.category === 'error');
+    const loggedErrors = logged.some(entry => entry.level === 'error');
     /** Opens the panel on a tab, or closes it when that tab already shows. */
-    const toggleTab = (tab: Tab) => {
-        if (state.showPanel && state.tab === tab) setView({showPanel: false});
-        else setView({showPanel: true, tab});
+    const toggleTab = (next: Tab) => {
+        if (showPanel && tab === next) setView({showPanel: false});
+        else setView({showPanel: true, tab: next});
     };
-    const on = 'bg-neutral-200 dark:bg-neutral-800';
     return (
-        <header class="flex h-10 shrink-0 items-center gap-3 border-b border-neutral-200 px-3 dark:border-neutral-800">
-            <a class="font-semibold" href="#">livebranch</a>
+        <header className="flex h-10 shrink-0 items-center gap-3 border-b px-3">
+            <a className="font-semibold" href="#">livebranch</a>
             <Sources />
-            <Show when={state.session && state.spec.gh}><Compare /></Show>
+            {session && gh && <Compare />}
             <Status />
-            <div class="ml-auto flex items-center gap-1">
-                <button class={button} classList={{[on]: state.showCode}} aria-pressed={state.showCode} onClick={() => setView({showCode: !state.showCode})}>Code</button>
-                <button class={button} classList={{[on]: state.showPanel && state.tab === 'problems', 'text-red-600 dark:text-red-400': errors() > 0}} onClick={() => toggleTab('problems')}>
-                    Problems{allProblems().length ? ` (${allProblems().length})` : ''}
-                </button>
-                <button class={button} classList={{[on]: state.showPanel && state.tab === 'console', 'text-red-600 dark:text-red-400': loggedErrors()}} onClick={() => toggleTab('console')}>
-                    Console{logged() ? ` (${logged()})` : ''}
-                </button>
-                <button class={button} onClick={() => setState('runs', state.runs + 1)}>Reload</button>
-                <button class={button} onClick={() => copy('link')}>{copied() === 'link' ? 'Copied' : 'Copy link'}</button>
-                <Show when={state.spec.gh}>
-                    <button
-                        class={button}
+            <div className="ml-auto flex items-center gap-1">
+                <Button variant="ghost" size="sm" className={toggle} aria-pressed={showCode} onClick={() => setView({showCode: !showCode})}>Code</Button>
+                <Button variant="ghost" size="sm" className={cn(toggle, errors && 'text-destructive aria-pressed:text-destructive')} aria-pressed={showPanel && tab === 'problems'} onClick={() => toggleTab('problems')}>
+                    Problems{problems.length ? ` (${problems.length})` : ''}
+                </Button>
+                <Button variant="ghost" size="sm" className={cn(toggle, loggedErrors && 'text-destructive aria-pressed:text-destructive')} aria-pressed={showPanel && tab === 'console'} onClick={() => toggleTab('console')}>
+                    Console{logged.length ? ` (${logged.length})` : ''}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setState(draft => { draft.runs++; })}>Reload</Button>
+                <Button variant="ghost" size="sm" onClick={() => copy('link')}>{copied === 'link' ? 'Copied' : 'Copy link'}</Button>
+                {gh && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         title="Copies the demo as a code block for the description of a pull request. Opened here by its address, the pull request then runs it."
                         onClick={() => copy('block')}
                     >
-                        {copied() === 'block' ? 'Copied' : 'Copy for PR'}
-                    </button>
-                </Show>
+                        {copied === 'block' ? 'Copied' : 'Copy for PR'}
+                    </Button>
+                )}
+                <Button variant="ghost" size="icon-sm" asChild>
+                    <a href={REPOSITORY} target="_blank" rel="noreferrer" title="livebranch on GitHub" aria-label="livebranch on GitHub"><MarkGithubIcon /></a>
+                </Button>
             </div>
         </header>
     );
@@ -84,41 +96,44 @@ function Header() {
  * side names its own ref, so the header does not name them again.
  */
 function Sources() {
+    const {gh, session, comparing} = useStore(useShallow(state => ({gh: state.spec.gh, session: state.session, comparing: baseSource(state.spec) !== undefined})));
+    if (session && comparing) return null;
     return (
-        <Show when={!state.session || !baseSource(state.spec)}>
-            <span class="flex min-w-0 items-center gap-2 font-mono text-xs">
-                <Show when={state.session} fallback={<span>{state.spec.gh ?? ''}</span>}>
-                    <RefLinks gh={state.spec.gh} session={state.session} fallback={state.session!.label} />
-                </Show>
-            </span>
-        </Show>
+        <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
+            {session ? <RefLinks gh={gh} session={session} fallback={session.label} /> : <span>{gh ?? ''}</span>}
+        </span>
     );
 }
 
 /** The field that names the ref to compare with. */
 function CompareForm(props: {close(): void}) {
-    let input!: HTMLInputElement;
-    onMount(() => {
-        input.focus();
-        input.select();
-    });
+    const input = useRef<HTMLInputElement>(null);
+    const base = useStore(state => state.spec.base);
+    useEffect(() => {
+        input.current?.focus();
+        input.current?.select();
+    }, []);
     const apply = (ref: string) => {
         props.close();
         void compareWith(ref);
     };
     return (
-        <form class="flex shrink-0 items-center gap-1" onSubmit={event => { event.preventDefault(); apply(input.value); }} onKeyDown={event => { if (event.key === 'Escape') props.close(); }}>
-            <input
+        <form
+            className="flex shrink-0 items-center gap-1"
+            onSubmit={event => { event.preventDefault(); apply(input.current?.value ?? ''); }}
+            onKeyDown={event => { if (event.key === 'Escape') props.close(); }}
+        >
+            <Input
                 ref={input}
-                class="w-44 rounded border border-neutral-300 bg-transparent px-2 py-0.5 font-mono text-xs dark:border-neutral-700"
+                className="h-7 w-44 font-mono text-xs md:text-xs"
                 aria-label="Ref to compare with"
                 placeholder="branch, tag, commit or #123"
-                spellcheck={false}
-                value={state.spec.base ?? ''}
+                spellCheck={false}
+                defaultValue={base ?? ''}
             />
-            <button class={button} type="submit">Compare</button>
-            <Show when={state.spec.base}><button class={button} type="button" onClick={() => apply('')}>Stop comparing</button></Show>
-            <button class={button} type="button" onClick={props.close}>Cancel</button>
+            <Button variant="ghost" size="sm" type="submit">Compare</Button>
+            {base && <Button variant="ghost" size="sm" type="button" onClick={() => apply('')}>Stop comparing</Button>}
+            <Button variant="ghost" size="sm" type="button" onClick={props.close}>Cancel</Button>
         </form>
     );
 }
@@ -128,174 +143,196 @@ function CompareForm(props: {close(): void}) {
  * repository's default branch, which is what a branch or a pull request is mostly held against.
  */
 function Compare() {
-    const [editing, setEditing] = createSignal(false);
+    const [editing, setEditing] = useState(false);
+    const {pull, spec} = useStore(useShallow(state => ({pull: state.pull, spec: state.spec})));
     const start = async () => {
-        const gh = state.spec.gh!;
-        const branch = state.spec.base ? undefined : state.pull?.base || await defaultBranch(gh);
+        const {spec, pull} = current();
+        const gh = spec.gh!;
+        const branch = spec.base ? undefined : pull?.base || await defaultBranch(gh);
         // The default branch next to itself shows nothing, so then the ref is asked for.
         if (branch && !['HEAD', branch].includes(parseGithubRef(gh).ref)) void compareWith(branch);
         else setEditing(true);
     };
     // The address of a pull request compares with the default branch, which is not where every one goes.
-    const target = () => {
-        const {pull, spec} = state;
-        return pull?.base && spec.base === pull.defaultBranch && pull.base !== spec.base ? pull.base : undefined;
-    };
+    const target = pull?.base && spec.base === pull.defaultBranch && pull.base !== spec.base ? pull.base : undefined;
     return (
         <>
-            <Show when={editing()} fallback={<button class={`${button} shrink-0`} onClick={start}>{state.spec.base ? 'Compare with…' : 'Compare'}</button>}>
-                <CompareForm close={() => setEditing(false)} />
-            </Show>
-            <Show when={!editing() && target()}>
-                <button class={`${button} shrink-0`} title={`This pull request goes into ${target()}, not into ${state.spec.base}.`} onClick={() => void compareWith(target()!)}>Goes into {target()}</button>
-            </Show>
+            {editing
+                ? <CompareForm close={() => setEditing(false)} />
+                : <Button variant="ghost" size="sm" className="shrink-0" onClick={start}>{spec.base ? 'Compare with…' : 'Compare'}</Button>}
+            {!editing && target && (
+                <Button variant="ghost" size="sm" className="shrink-0" title={`This pull request goes into ${target}, not into ${spec.base}.`} onClick={() => void compareWith(target)}>
+                    Goes into {target}
+                </Button>
+            )}
         </>
     );
 }
 
+const row = 'border-b border-border/50 px-3 py-1';
+
 function Problems() {
+    const problems = useProblems();
+    const checking = useStore(state => state.checking);
     return (
-        <ul class="flex flex-col font-mono text-xs">
-            <Show when={state.checking}><li class="px-3 py-1 text-neutral-500">Checking types…</li></Show>
-            <For each={allProblems()} fallback={<Show when={!state.checking}><li class="px-3 py-2 text-neutral-500">No problems.</li></Show>}>
-                {problem => (
-                    <li class="flex gap-3 border-b border-neutral-100 px-3 py-1 dark:border-neutral-900">
-                        <span classList={{'text-red-600 dark:text-red-400': problem.category === 'error', 'text-amber-600 dark:text-amber-400': problem.category === 'warning'}}>
-                            {problem.category}
-                        </span>
-                        <Show when={problem.file}>
-                            <button class="shrink-0 text-blue-600 hover:underline dark:text-blue-400" onClick={() => { setState('file', problem.file); setView({showCode: true}); }}>
-                                {problem.file!.slice(1)}{problem.line ? `:${problem.line}` : ''}
-                            </button>
-                        </Show>
-                        <span class="whitespace-pre-wrap">{problem.code ? `TS${problem.code}: ` : ''}{problem.text}</span>
-                    </li>
-                )}
-            </For>
+        <ul className="flex flex-col font-mono text-xs">
+            {checking && <li className="px-3 py-1 text-muted-foreground">Checking types…</li>}
+            {!checking && !problems.length && <li className="px-3 py-2 text-muted-foreground">No problems.</li>}
+            {problems.map((problem, index) => (
+                <li key={index} className={cn(row, 'flex gap-3')}>
+                    <span className={cn(problem.category === 'error' && 'text-red-600 dark:text-red-400', problem.category === 'warning' && 'text-amber-600 dark:text-amber-400')}>
+                        {problem.category}
+                    </span>
+                    {problem.file && (
+                        <button className="shrink-0 text-blue-600 hover:underline dark:text-blue-400" onClick={() => { setState({file: problem.file}); setView({showCode: true}); }}>
+                            {problem.file.slice(1)}{problem.line ? `:${problem.line}` : ''}
+                        </button>
+                    )}
+                    <span className="whitespace-pre-wrap">{problem.code ? `TS${problem.code}: ` : ''}{problem.text}</span>
+                </li>
+            ))}
         </ul>
     );
 }
 
 function Entries(props: {entries: ConsoleEntry[]}) {
     return (
-        <ul class="flex flex-col font-mono text-xs">
-            <For each={props.entries} fallback={<li class="px-3 py-2 text-neutral-500">The page has logged nothing.</li>}>
-                {entry => (
-                    <li
-                        class="whitespace-pre-wrap border-b border-neutral-100 px-3 py-1 dark:border-neutral-900"
-                        classList={{'text-red-600 dark:text-red-400': entry.level === 'error', 'text-amber-600 dark:text-amber-400': entry.level === 'warn'}}
-                    >
-                        {entry.text}
-                    </li>
-                )}
-            </For>
+        <ul className="flex flex-col font-mono text-xs">
+            {!props.entries.length && <li className="px-3 py-2 text-muted-foreground">The page has logged nothing.</li>}
+            {props.entries.map((entry, index) => (
+                <li
+                    key={index}
+                    className={cn(row, 'whitespace-pre-wrap', entry.level === 'error' && 'text-red-600 dark:text-red-400', entry.level === 'warn' && 'text-amber-600 dark:text-amber-400')}
+                >
+                    {entry.text}
+                </li>
+            ))}
         </ul>
     );
 }
 
 function ConsoleColumn(props: {label: string; entries: ConsoleEntry[]}) {
     return (
-        <section class="flex min-w-0 flex-1 flex-col" aria-label={`Console of ${props.label}`}>
-            <h3 class="shrink-0 border-b border-neutral-200 px-3 py-1 font-mono text-xs text-neutral-500 dark:border-neutral-800">{props.label}</h3>
-            <div class="min-h-0 flex-1 overflow-auto"><Entries entries={props.entries} /></div>
+        <section className="flex min-w-0 flex-1 flex-col" aria-label={`Console of ${props.label}`}>
+            <h3 className="shrink-0 border-b px-3 py-1 font-mono text-xs text-muted-foreground">{props.label}</h3>
+            <div className="min-h-0 flex-1 overflow-auto"><Entries entries={props.entries} /></div>
         </section>
     );
 }
 
 /** What the page logged. In a comparison each page has a console of its own, in the order of the previews. */
 function Console() {
+    const state = useStore(useShallow(state => ({spec: state.spec, session: state.session, base: state.base, console: state.console, baseConsole: state.baseConsole})));
+    const against = baseSource(state.spec);
+    if (against === undefined) return <Entries entries={state.console} />;
     return (
-        <Show when={baseSource(state.spec)} fallback={<Entries entries={state.console} />}>
-            <div class="flex h-full divide-x divide-neutral-200 dark:divide-neutral-800">
-                <ConsoleColumn label={refLabel(baseSource(state.spec), state.base) || state.spec.base!} entries={state.baseConsole} />
-                <ConsoleColumn label={refLabel(state.spec.gh, state.session) || state.session?.label || ''} entries={state.console} />
-            </div>
-        </Show>
+        <div className="flex h-full divide-x">
+            <ConsoleColumn label={refLabel(against, state.base) || state.spec.base!} entries={state.baseConsole} />
+            <ConsoleColumn label={refLabel(state.spec.gh, state.session) || state.session?.label || ''} entries={state.console} />
+        </div>
     );
 }
 
 function Build() {
+    const session = useStore(state => state.session);
     return (
-        <div class="flex flex-col gap-2 px-3 py-2 font-mono text-xs">
-            <table class="self-start">
+        <div className="flex flex-col gap-2 px-3 py-2 font-mono text-xs">
+            <table className="self-start">
                 <tbody>
-                    <For each={state.session?.steps}>
-                        {step => (
-                            <tr>
-                                <td class="pr-4 text-neutral-500">{step.name}</td>
-                                <td class="pr-4 text-right tabular-nums">{seconds(step.ms)}</td>
-                                <td class="text-neutral-500">{step.detail}</td>
-                            </tr>
-                        )}
-                    </For>
+                    {session?.steps.map((step, index) => (
+                        <tr key={index}>
+                            <td className="pr-4 text-muted-foreground">{step.name}</td>
+                            <td className="pr-4 text-right tabular-nums">{seconds(step.ms)}</td>
+                            <td className="text-muted-foreground">{step.detail}</td>
+                        </tr>
+                    ))}
                 </tbody>
             </table>
-            <Show when={state.session?.log}><pre class="whitespace-pre-wrap text-neutral-500">{state.session!.log}</pre></Show>
+            {session?.log && <pre className="whitespace-pre-wrap text-muted-foreground">{session.log}</pre>}
         </div>
     );
 }
 
 function BottomPanel() {
-    const errors = () => allProblems().length;
-    const tabs = (): {id: Tab; label: string}[] => [
-        {id: 'problems', label: errors() ? `Problems (${errors()})` : 'Problems'},
-        {id: 'console', label: allLogged().length ? `Console (${allLogged().length})` : 'Console'},
-        {id: 'terminal', label: 'Terminal'},
-        {id: 'build', label: 'Build'},
+    const tab = useStore(state => state.tab);
+    const problems = useProblems().length;
+    const logged = useLogged().length;
+    const tabs: {id: Tab; label: string; content: ReactNode}[] = [
+        {id: 'problems', label: problems ? `Problems (${problems})` : 'Problems', content: <Problems />},
+        {id: 'console', label: logged ? `Console (${logged})` : 'Console', content: <Console />},
+        {id: 'terminal', label: 'Terminal', content: <Terminal />},
+        {id: 'build', label: 'Build', content: <Build />},
     ];
     return (
-        <section class="flex h-56 shrink-0 flex-col border-t border-neutral-200 dark:border-neutral-800">
-            <nav class="flex shrink-0 gap-1 border-b border-neutral-200 px-2 dark:border-neutral-800">
-                <For each={tabs()}>
-                    {tab => (
-                        <button
-                            class="border-b-2 px-2 py-1.5"
-                            classList={{'border-blue-600': state.tab === tab.id, 'border-transparent text-neutral-500': state.tab !== tab.id}}
-                            onClick={() => setState('tab', tab.id)}
-                        >
-                            {tab.label}
-                        </button>
-                    )}
-                </For>
-            </nav>
-            <div class="min-h-0 flex-1 overflow-auto">
-                <Switch>
-                    <Match when={state.tab === 'problems'}><Problems /></Match>
-                    <Match when={state.tab === 'console'}><Console /></Match>
-                    <Match when={state.tab === 'terminal'}><Terminal /></Match>
-                    <Match when={state.tab === 'build'}><Build /></Match>
-                </Switch>
-            </div>
-        </section>
+        <Tabs value={tab} onValueChange={value => setState({tab: value as Tab})} className="h-full gap-0">
+            <TabsList variant="line" className="w-full shrink-0 justify-start rounded-none border-b px-2">
+                {/* Radix focuses a pressed tab from script, which Chrome rings as if the keyboard had moved there. */}
+                {tabs.map(({id, label}) => (
+                    <TabsTrigger
+                        key={id}
+                        value={id}
+                        className="flex-none"
+                        onMouseDown={event => {
+                            if (event.button !== 0 || event.ctrlKey) return;
+                            event.preventDefault();
+                            setState({tab: id});
+                        }}
+                    >
+                        {label}
+                    </TabsTrigger>
+                ))}
+            </TabsList>
+            {tabs.map(({id, content}) => <TabsContent key={id} value={id} className="min-h-0 overflow-auto">{content}</TabsContent>)}
+        </Tabs>
     );
 }
 
 function Failure() {
+    const error = useStore(state => state.error);
     return (
-        <div class="flex h-full flex-col items-start gap-3 p-6">
-            <h2 class="text-lg font-semibold">This link could not be opened</h2>
-            <pre class="whitespace-pre-wrap font-mono text-xs text-red-600 dark:text-red-400">{state.error}</pre>
-            <a class="text-blue-600 underline dark:text-blue-400" href="#">Start over</a>
+        <div className="flex h-full flex-col items-start gap-3 p-6">
+            <h2 className="text-lg font-semibold">This link could not be opened</h2>
+            <pre className="font-mono text-xs whitespace-pre-wrap text-red-600 dark:text-red-400">{error}</pre>
+            <a className="text-blue-600 underline dark:text-blue-400" href="#">Start over</a>
         </div>
     );
 }
 
+/**
+ * The header over the code on the left and the preview on the right, with the panel under the
+ * preview only, so that in a comparison each console is under its page. The lines between them
+ * move, and where they were is kept for the next visit. While one moves the previews do not take
+ * the pointer, which they would otherwise keep once it is over them.
+ */
 export function Workbench() {
+    const {phase, showCode, showPanel, opened} = useStore(useShallow(state => ({phase: state.phase, showCode: state.showCode, showPanel: state.showPanel, opened: state.session !== undefined})));
+    const code = showCode && opened;
+    const across = useDefaultLayout({id: 'livebranch-code', panelIds: code ? ['code', 'page'] : ['page'], storage: localStorage});
+    const down = useDefaultLayout({id: 'livebranch-panel', panelIds: showPanel ? ['preview', 'panel'] : ['preview'], storage: localStorage});
     return (
-        <div class="flex h-full flex-col">
+        <div className="flex h-full flex-col [&:has([data-separator=active])_iframe]:pointer-events-none">
             <Header />
-            <Show when={state.phase !== 'failed'} fallback={<Failure />}>
-                <div class="flex min-h-0 flex-1">
-                    <Show when={state.showCode && state.session}>
-                        <div class="flex w-1/2 min-w-0 border-r border-neutral-200 dark:border-neutral-800"><CodePanel /></div>
-                    </Show>
-                    {/* The panel sits under the preview only, so that in a comparison each console is under its page. */}
-                    <div class="flex min-w-0 flex-1 flex-col">
-                        <div class="min-h-0 flex-1"><Preview /></div>
-                        <Show when={state.showPanel}><BottomPanel /></Show>
-                    </div>
-                </div>
-            </Show>
+            {phase === 'failed' ? <Failure /> : (
+                <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={across.defaultLayout} onLayoutChanged={across.onLayoutChanged}>
+                    {code && (
+                        <>
+                            <ResizablePanel id="code" defaultSize="50%" minSize={240}><CodePanel /></ResizablePanel>
+                            <ResizableHandle className={handle} aria-label="Width of the code" />
+                        </>
+                    )}
+                    <ResizablePanel id="page" minSize={240}>
+                        <ResizablePanelGroup orientation="vertical" defaultLayout={down.defaultLayout} onLayoutChanged={down.onLayoutChanged}>
+                            <ResizablePanel id="preview" minSize={80}><Preview /></ResizablePanel>
+                            {showPanel && (
+                                <>
+                                    <ResizableHandle className={handle} aria-label="Height of the panel" />
+                                    <ResizablePanel id="panel" defaultSize={224} minSize={64} groupResizeBehavior="preserve-pixel-size"><BottomPanel /></ResizablePanel>
+                                </>
+                            )}
+                        </ResizablePanelGroup>
+                    </ResizablePanel>
+                </ResizablePanelGroup>
+            )}
         </div>
     );
 }

@@ -1,4 +1,4 @@
-import {Show, createResource} from 'solid-js';
+import {useEffect, useState} from 'react';
 import type {SessionInfo} from '../engine/protocol.ts';
 import {branchesAt, type Branch} from './store.ts';
 
@@ -39,33 +39,35 @@ export function refLabel(gh: string | undefined, session: SessionInfo | undefine
  * not on GitHub.
  */
 export function RefLinks(props: {gh: string | undefined; session: SessionInfo | undefined; fallback?: string}) {
-    const found = () => describeRef(props.gh, props.session);
-    const unnamed = () => {
-        const {name, repo} = found();
-        const sha = props.session?.commit;
-        return !name && repo && sha ? `${repo}@${sha}` : undefined;
-    };
-    const [asked] = createResource(unnamed, branchesAt);
+    const found = describeRef(props.gh, props.session);
+    const sha = props.session?.commit;
+    const unnamed = !found.name && found.repo && sha ? `${found.repo}@${sha}` : undefined;
+    const [asked, setAsked] = useState<{about: string; branches: Branch[]}>();
+    useEffect(() => {
+        if (!unnamed) return;
+        let live = true;
+        void branchesAt(unnamed).then(branches => {
+            if (live) setAsked({about: unnamed, branches});
+        });
+        return () => {
+            live = false;
+        };
+    }, [unnamed]);
     // An answer about the commit before this one is not shown.
-    const branches = () => unnamed() && !asked.loading ? asked() ?? [] : [];
-    const branchName = (branch: Branch) => branch.repo === found().repo ? branch.name : `${branch.repo.split('/')[0]}:${branch.name}`;
+    const branches = unnamed && asked?.about === unnamed ? asked.branches : [];
+    const branchName = (branch: Branch) => branch.repo === found.repo ? branch.name : `${branch.repo.split('/')[0]}:${branch.name}`;
     const link = 'hover:underline';
+    if (!props.gh) return <span>{props.fallback}</span>;
     return (
-        <Show when={props.gh} fallback={<span>{props.fallback}</span>}>
-            <span class="flex items-center gap-1.5 whitespace-nowrap">
-                <Show when={found().name}>
-                    <a class={link} href={found().nameUrl} target="_blank" rel="noreferrer" title="Open on GitHub">{found().name}</a>
-                </Show>
-                <Show when={found().commit}>
-                    <a class={link} href={found().commitUrl} target="_blank" rel="noreferrer" title="Open the commit on GitHub">{found().commit}</a>
-                </Show>
-                <Show when={branches().length}>
-                    <span title={`This commit is the head of ${branches().map(branchName).join(', ')}.`}>
-                        (<a class={link} href={`https://github.com/${branches()[0].repo}/tree/${branches()[0].name}`} target="_blank" rel="noreferrer">{branchName(branches()[0])}</a>
-                        {branches().length > 1 ? ` +${branches().length - 1}` : ''})
-                    </span>
-                </Show>
-            </span>
-        </Show>
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
+            {found.name && <a className={link} href={found.nameUrl} target="_blank" rel="noreferrer" title="Open on GitHub">{found.name}</a>}
+            {found.commit && <a className={link} href={found.commitUrl} target="_blank" rel="noreferrer" title="Open the commit on GitHub">{found.commit}</a>}
+            {branches.length > 0 && (
+                <span title={`This commit is the head of ${branches.map(branchName).join(', ')}.`}>
+                    (<a className={link} href={`https://github.com/${branches[0].repo}/tree/${branches[0].name}`} target="_blank" rel="noreferrer">{branchName(branches[0])}</a>
+                    {branches.length > 1 ? ` +${branches.length - 1}` : ''})
+                </span>
+            )}
+        </span>
     );
 }
