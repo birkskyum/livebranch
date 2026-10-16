@@ -6,6 +6,7 @@
 // A commit that is opened by its hash has to say which branch it is the head of. Its build is then
 // reused for the branch, which has to keep its own name.
 // The last page stands in for GitHub's answer about the pull request, to give its description a demo.
+// The small page is edited after its type check, and has to build again with the edit.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
 //   site     the site to check, https://livebranch.dev/ by default
@@ -28,7 +29,16 @@ if (!head) throw new Error('The site did not say where main of maplibre-gl-js is
 const described = '```ts livebranch\nimport {Map} from "maplibre-gl";\ndocument.body.dataset.described = typeof Map;\n```\n';
 const pages = {
     // A local Worker names the live site in its links, so only the link's parameters are taken.
-    'small page': {url: `${site}${new URL(small.url).hash}`, ok: found => found.out === 'area 9, 2 triangles'},
+    'small page': {
+        url: `${site}${new URL(small.url).hash}`,
+        ok: found => found.out === 'area 9, 2 triangles' && found.edited === 'area 12, 2 triangles',
+        async after(page) {
+            await page.evaluate(() => window.__livebranch.edit('/shape.ts', 'export function area(side: number): number { return side * 4; }\n'));
+            // The page of the new build, or what went wrong.
+            await page.waitForFunction(() => window.__livebranch.state.error || document.querySelector('iframe')?.contentDocument?.querySelector('#out')?.textContent === 'area 12, 2 triangles', undefined, {timeout: 30000}).catch(() => {});
+            return {edited: await page.evaluate(() => window.__livebranch.state.error || document.querySelector('iframe')?.contentDocument?.querySelector('#out')?.textContent)};
+        },
+    },
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628`,

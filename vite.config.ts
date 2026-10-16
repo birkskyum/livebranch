@@ -50,6 +50,15 @@ function notices(write: boolean): Plugin {
 export default defineConfig({
     base: './',
     plugins: [solid(), tailwindcss(), notices(true)],
-    worker: {format: 'es', plugins: () => [notices(false)]},
+    worker: {
+        format: 'es',
+        plugins: () => [notices(false)],
+        // Each engine loads the worker's entry with a parameter of its own (src/engine/client.ts). The
+        // shell and the type check are chunks that import what they share with the engine by its plain
+        // URL, so if that were the entry, it would run a second time, as an engine with no project
+        // that answers every call first. So the engine's modules, apart from the entry and the two
+        // that load later, are a chunk of their own.
+        rolldownOptions: {output: {codeSplitting: {groups: [{name: 'engine', test: /\/src\/engine\/(?!(?:worker|shell|types)\.ts$)/}]}}},
+    },
     build: {target: 'es2022'},
 });
