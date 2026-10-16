@@ -1,6 +1,6 @@
 import {build, warmUp, type Output, type Problem} from './build.ts';
 import {plainNodeCommand, runNodeScript} from './node-run.ts';
-import {fetchPrebuilt} from './prebuilt.ts';
+import {fetchPrebuilt, type Stale} from './prebuilt.ts';
 import {hash, openProject, type Env, type Project, type ScriptIo, type ScriptRequest, type ScriptResult} from './project.ts';
 import type {EngineCalls, FileEntry, OpenOptions, Reply, Request, SessionInfo, Step} from './protocol.ts';
 import type {Shell} from './shell.ts';
@@ -126,21 +126,27 @@ async function prepare(steps: Step[]): Promise<void> {
     // The sources of the page are fetched while the setup runs.
     const warm = warmUp(current, env!).catch(() => {});
 
-    const prebuilt = async () => {
-        if (!current.config.prebuilt?.length) return;
+    const run = async (command: string): Promise<boolean> => {
+        const result = await timed('setup', command, () => runSetup(current, command));
+        log += `$ ${command}\n${result.stdout}${result.stderr}`;
+        if (result.exitCode === 0) return true;
+        const text = `Setup command failed with exit code ${result.exitCode}: ${command}\n${result.stderr.trim()}`;
+        problems.push({file: undefined, line: undefined, column: undefined, code: 0, category: 'error', text});
+        return false;
+    };
+    const prebuilt = async (): Promise<Stale[]> => {
+        if (!current.config.prebuilt?.length) return [];
         const count = current.config.prebuilt.flatMap(group => group.files).length;
-        problems.push(...await timed('prebuilt', `${count} ${count === 1 ? 'file' : 'files'} from npm`, () => fetchPrebuilt(current, env!)));
+        const result = await timed('prebuilt', `${count} ${count === 1 ? 'file' : 'files'} from npm`, () => fetchPrebuilt(current, env!));
+        problems.push(...result.problems);
+        return result.stale;
     };
     const setup = async () => {
-        for (const command of current.config.setup ?? []) {
-            const result = await timed('setup', command, () => runSetup(current, command));
-            log += `$ ${command}\n${result.stdout}${result.stderr}`;
-            if (result.exitCode === 0) continue;
-            const text = `Setup command failed with exit code ${result.exitCode}: ${command}\n${result.stderr.trim()}`;
-            problems.push({file: undefined, line: undefined, column: undefined, code: 0, category: 'error', text});
-        }
+        for (const command of current.config.setup ?? []) await run(command);
     };
-    await Promise.all([prebuilt(), setup()]);
+    const [stale] = await Promise.all([prebuilt(), setup()]);
+    // Prebuilt files that may be out of date are made by their command, one at a time as the setup commands are.
+    for (const group of stale) if (!await run(group.command)) problems.push(...group.fallback());
     await warm;
     Object.assign(state, {log, setupProblems: problems, prepared: true});
 }

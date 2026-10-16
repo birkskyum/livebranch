@@ -105,7 +105,7 @@ array of lines.
 | `alias` | Bare import specifiers that point at a project file or a URL. |
 | `entries` | Modules that nothing imports statically but the page loads, such as worker scripts. |
 | `files` | Extra files, written when the project does not have them. |
-| `prebuilt` | Generated files to take from the project's published npm package, for generators that cannot run in a browser. A warning is reported when the generator's sources differ from the release's. |
+| `prebuilt` | Generated files to take from the project's published npm package, which saves running their generator, or stands in for a generator that cannot run in a browser. When the generator's sources (`inputs`) differ from the release's, its `command` runs after the setup commands. Without a `command`, or when it fails, the release's files are used and a warning is reported. |
 | `cdn` | `esm.sh` (the default) or `jsdelivr`. |
 
 ## Terminal

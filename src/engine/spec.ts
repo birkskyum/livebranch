@@ -46,14 +46,20 @@ export interface ProjectConfig {
 }
 
 /**
- * Files that a generator makes and that the browser cannot make, for example because the generator
- * downloads from a host without CORS. They come from the release that the project's package.json
- * names, or else from the latest one.
+ * Files that a generator makes. They come from the release that the project's package.json names,
+ * or else from the latest one, which saves running the generator, or stands in for a generator
+ * that the browser cannot run, for example because it downloads from a host without CORS.
  */
 export interface Prebuilt {
     files: string[];
-    /** The generator's sources. A warning is reported when they differ from the release's. */
+    /** The generator's sources. When they differ from the release's, the files may be out of date. */
     inputs?: string[];
+    /**
+     * The command that makes the files. It runs after the setup commands when an input differs from
+     * the release's, or when the release does not have the files. Without it, or when it fails, the
+     * release's files are used, with a warning.
+     */
+    command?: string;
 }
 
 export interface GithubRef {
