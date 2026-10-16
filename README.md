@@ -36,8 +36,8 @@ With `base=main` the same script runs against main and against the branch, side 
 Compare button in the header does the same: its first click adds the repository's default branch,
 and after that it changes the ref or stops comparing. A pull request that is opened by its GitHub
 address (`livebranch.dev/owner/repo/pull/123`) starts next to the default branch. Each side has
-its own console, under its preview. The line between the code and the previews, and the one above
-the panel below them, can be dragged, and the app keeps where they were for the next visit.
+its own console, under its preview. The file list, the code and the panel below the previews are
+resized by dragging the lines between them, and the app keeps their sizes for the next visit.
 
 A pull request can carry its demo in its description, as a code block that is marked for this
 site. Opened by its address, the pull request then runs that demo on both sides, so the address is

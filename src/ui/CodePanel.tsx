@@ -1,4 +1,6 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
+import {useDefaultLayout} from 'react-resizable-panels';
+import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@/components/ui/resizable.tsx';
 import {cn} from '@/lib/utils.ts';
 import type {FileEntry} from '../engine/protocol.ts';
 import {current, edit, listFiles, readFile, setState, useStore} from './store.ts';
@@ -59,7 +61,10 @@ function Directory(props: {node: Node; depth: number}) {
     );
 }
 
-/** The project's files and an editor for the selected one. An edit rebuilds the preview. */
+/**
+ * The project's files and an editor for the selected one. An edit rebuilds the preview. The line
+ * between them moves, and the list keeps its width when the code panel is resized.
+ */
 export function CodePanel() {
     const file = useStore(state => state.file);
     const label = useStore(state => state.session?.label);
@@ -67,6 +72,17 @@ export function CodePanel() {
     const [files, setFiles] = useState<FileEntry[]>([]);
     const root = useMemo(() => tree(files), [files]);
     const host = useRef<HTMLDivElement>(null);
+    const layout = useDefaultLayout({id: 'livebranch-files', storage: localStorage});
+    // The list's width is in pixels, which only come out right once the code panel has a width. It
+    // has none for a moment after it opens.
+    const [box, setBox] = useState<HTMLDivElement | null>(null);
+    const [measured, setMeasured] = useState(false);
+    useEffect(() => {
+        if (!box || measured) return;
+        const observer = new ResizeObserver(([entry]) => setMeasured(entry.contentRect.width > 0));
+        observer.observe(box);
+        return () => observer.disconnect();
+    }, [box, measured]);
 
     useEffect(() => {
         let live = true;
@@ -101,17 +117,26 @@ export function CodePanel() {
             live = false;
             dispose?.();
         };
-    }, [file, label]);
+    }, [file, label, measured]);
 
     return (
-        <div className="flex h-full min-w-0 flex-1">
-            <nav className="w-48 shrink-0 overflow-auto border-r py-1 font-mono text-xs" aria-label="Files">
-                <Directory node={root} depth={0} />
-            </nav>
-            <div className="flex min-w-0 flex-1 flex-col">
-                <div className="shrink-0 truncate border-b px-3 py-1 font-mono text-xs text-muted-foreground">{file?.slice(1)}</div>
-                <div ref={host} className="min-h-0 flex-1 overflow-hidden p-0 font-mono text-xs text-muted-foreground" />
-            </div>
+        <div ref={setBox} className="h-full">
+            {measured && (
+                <ResizablePanelGroup orientation="horizontal" defaultLayout={layout.defaultLayout} onLayoutChanged={layout.onLayoutChanged}>
+                    <ResizablePanel id="files" defaultSize={192} minSize={96} groupResizeBehavior="preserve-pixel-size">
+                        <nav className="h-full overflow-auto py-1 font-mono text-xs" aria-label="Files">
+                            <Directory node={root} depth={0} />
+                        </nav>
+                    </ResizablePanel>
+                    <ResizableHandle aria-label="Width of the files" />
+                    <ResizablePanel id="editor" minSize={120}>
+                        <div className="flex h-full min-w-0 flex-col">
+                            <div className="shrink-0 truncate border-b px-3 py-1 font-mono text-xs text-muted-foreground">{file?.slice(1)}</div>
+                            <div ref={host} className="min-h-0 flex-1 overflow-hidden p-0 font-mono text-xs text-muted-foreground" />
+                        </div>
+                    </ResizablePanel>
+                </ResizablePanelGroup>
+            )}
         </div>
     );
 }

@@ -14,9 +14,6 @@ import {RefLinks, refLabel} from './RefLinks.tsx';
 import {Terminal} from './Terminal.tsx';
 import {REPOSITORY, allProblems, compareWith, current, defaultBranch, demoBlock, setState, setView, shareLink, useStore, type ConsoleEntry, type State, type Tab} from './store.ts';
 
-/** The line takes the pointer a few pixels to both sides, also over a preview, which would otherwise take it first. */
-const handle = 'z-10 after:w-2 aria-[orientation=horizontal]:after:h-2';
-
 /** A header button that shows whether its part of the workbench is open. */
 const toggle = 'aria-pressed:bg-muted aria-pressed:text-foreground';
 
@@ -317,7 +314,7 @@ export function Workbench() {
                     {code && (
                         <>
                             <ResizablePanel id="code" defaultSize="50%" minSize={240}><CodePanel /></ResizablePanel>
-                            <ResizableHandle className={handle} aria-label="Width of the code" />
+                            <ResizableHandle aria-label="Width of the code" />
                         </>
                     )}
                     <ResizablePanel id="page" minSize={240}>
@@ -325,7 +322,7 @@ export function Workbench() {
                             <ResizablePanel id="preview" minSize={80}><Preview /></ResizablePanel>
                             {showPanel && (
                                 <>
-                                    <ResizableHandle className={handle} aria-label="Height of the panel" />
+                                    <ResizableHandle aria-label="Height of the panel" />
                                     <ResizablePanel id="panel" defaultSize={224} minSize={64} groupResizeBehavior="preserve-pixel-size"><BottomPanel /></ResizablePanel>
                                 </>
                             )}

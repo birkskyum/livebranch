@@ -2,7 +2,8 @@
 // Chromium, and fails when one of them does not come up clean. The pull request is also opened by
 // its GitHub address, which compares it with the default branch, and the comparison is stopped.
 // Before that, what each side logs has to show in the console of that side, which is under it, and
-// the lines between the code, the previews and the panel have to move, also across a preview.
+// the lines between the files, the code, the previews and the panel have to move, also across a
+// preview. The files start 192 pixels wide and keep their width when the code panel is made wider.
 // Each ref has to be named once there: on its own side in a comparison, in the header without one.
 // A commit that is opened by its hash has to say which branch it is the head of. Its build is then
 // reused for the branch, which has to keep its own name.
@@ -43,7 +44,7 @@ const pages = {
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628`,
-        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.sides === 'side 0|side 1' && found.aligned && found.resized === '200,100' && found.alone === 1 && found.namedAlone === 1,
+        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.sides === 'side 0|side 1' && found.aligned && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.getByRole('tab', {name: /^Console/}).click();
             await page.evaluate(() => document.querySelectorAll('iframe').forEach((frame, index) => frame.contentWindow.console.log(`side ${index}`)));
@@ -62,16 +63,16 @@ const pages = {
                 await page.mouse.move(x + dx, y + dy, {steps: 10});
                 await page.mouse.up();
             };
-            const frame = page.locator('iframe').first();
-            const before = await frame.boundingBox();
-            const resized = await drag('Width of the code', 200, 0).then(() => drag('Height of the panel', 0, -100)).then(async () => {
-                const after = await frame.boundingBox();
-                return [after.x - before.x, before.height - after.height].map(Math.round).join();
+            const [files, frame] = [page.getByRole('navigation', {name: 'Files'}), page.locator('iframe').first()];
+            const before = {files: await files.boundingBox(), frame: await frame.boundingBox()};
+            const resized = await drag('Width of the files', 80, 0).then(() => drag('Width of the code', 200, 0)).then(() => drag('Height of the panel', 0, -100)).then(async () => {
+                const after = {files: await files.boundingBox(), frame: await frame.boundingBox()};
+                return [after.files.width - before.files.width, after.frame.x - before.frame.x, before.frame.height - after.frame.height].map(Math.round).join();
             }, error => String(error).split('\n')[0]);
             await page.getByRole('button', {name: 'Compare with…'}).click();
             await page.getByRole('button', {name: 'Stop comparing'}).click();
             await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
-            return {sides: logged.join('|'), aligned, resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+            return {sides: logged.join('|'), aligned, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'commit at the head of a branch': {
