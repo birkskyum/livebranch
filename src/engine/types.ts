@@ -1,4 +1,5 @@
 import {crashProblems, entryPage, inPage, loadClosure, pageEntries, problem, resolveContext, type Problem} from './build.ts';
+import {tarballUrl, untar} from './npm.ts';
 import type {Env, Project} from './project.ts';
 import {parseJsonc} from './project.ts';
 import {isSourcePath} from './resolve.ts';
@@ -9,33 +10,6 @@ const DECLARATION = /(?:\.d\.[cm]?ts|(?:^|\/)package\.json)$/;
 /** Cannot find module, and no declaration file for module: the answer when a package's types are not installed. */
 const MISSING_MODULE = new Set([2307, 7016, 2792]);
 
-/** The files of a gzipped tar archive, as an npm package is one. */
-async function untar(body: ReadableStream<Uint8Array>, keep: (path: string) => boolean): Promise<Map<string, string>> {
-    const stream = body.pipeThrough(new DecompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
-    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
-    const decoder = new TextDecoder();
-    const text = (start: number, length: number) => decoder.decode(bytes.subarray(start, start + length)).replace(/\0.*$/, '');
-    const files = new Map<string, string>();
-    let longPath: string | undefined;
-    for (let at = 0; at + 512 <= bytes.length;) {
-        const name = text(at, 100);
-        if (!name) break;
-        const size = parseInt(text(at + 124, 12), 8) || 0;
-        const type = text(at + 156, 1);
-        const prefix = text(at + 345, 155);
-        const data = bytes.subarray(at + 512, at + 512 + size);
-        if (type === 'x') {
-            longPath = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(decoder.decode(data))?.[1];
-        } else {
-            const path = (longPath ?? (prefix ? `${prefix}/${name}` : name)).replace(/^[^/]+\//, '');
-            longPath = undefined;
-            if ((type === '0' || type === '') && keep(path)) files.set(path, decoder.decode(data));
-        }
-        at += 512 + Math.ceil(size / 512) * 512;
-    }
-    return files;
-}
-
 interface Package {
     name: string;
     url: string;
@@ -45,7 +19,6 @@ interface Package {
 function typePackages(project: Project): Package[] {
     const {vfs, packageJson} = project;
     const lockText = vfs.readText('/package-lock.json');
-    const tarball = (name: string, version: string) => `https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${version}.tgz`;
     let wantedTypes: string[] = [];
     try {
         wantedTypes = parseJsonc(vfs.readText('/tsconfig.json') ?? '{}').compilerOptions?.types ?? [];
@@ -61,12 +34,12 @@ function typePackages(project: Project): Package[] {
         for (const {name, entry} of entries) {
             const typed = name.startsWith('@types/') ? name.slice(7).replace('__', '/') : undefined;
             const wanted = production.has(name) || (typed !== undefined && (production.has(typed) || production.has(`@${typed}`) || wantedTypes.includes(typed)));
-            if (wanted && entry.version) packages.push({name, url: entry.resolved ?? tarball(name, entry.version)});
+            if (wanted && entry.version) packages.push({name, url: entry.resolved ?? tarballUrl(name, entry.version)});
         }
         return packages;
     }
     for (const [name, version] of Object.entries<string>(packageJson.dependencies ?? {})) {
-        if (/^\d/.test(version)) packages.push({name, url: tarball(name, version)});
+        if (/^\d/.test(version)) packages.push({name, url: tarballUrl(name, version)});
     }
     return packages;
 }

@@ -30,7 +30,7 @@ const SWAPS: Record<string, string[]> = {
 const APPENDED = ['.ts', '.tsx', '.mts', '.js', '.jsx', '.mjs', '.json'];
 const INDEXES = ['/index.ts', '/index.tsx', '/index.js', '/index.mjs'];
 
-/** Modules of Node, and `glob`, that have a shim over the virtual file system. */
+/** Modules of Node, and `glob`, that have a shim in public/rt/node, most of them over the virtual file system. */
 const NODE_SHIMS: Record<string, string> = {
     'fs': 'fs.js',
     'fs/promises': 'fs-promises.js',
@@ -38,8 +38,15 @@ const NODE_SHIMS: Record<string, string> = {
     'path/posix': 'path.js',
     'url': 'url.js',
     'process': 'process.js',
+    'zlib': 'zlib.js',
     'glob': 'glob.js',
 };
+
+/** The URL of the shim of a module of Node, if it has one. */
+export function nodeShim(specifier: string, runtimeBase: string): string | undefined {
+    const shim = NODE_SHIMS[specifier.replace(/^node:/, '')];
+    return shim && `${runtimeBase}rt/node/${shim}`;
+}
 
 export function isSourcePath(path: string): boolean {
     return SOURCE.test(path) && !/\.d\.[cm]?ts$/.test(path);
@@ -59,7 +66,8 @@ export function resolveFile(vfs: Vfs, path: string): string | undefined {
     return undefined;
 }
 
-function packageName(specifier: string): string {
+/** The npm package that a bare specifier names: `@scope/name` or `name`. */
+export function packageName(specifier: string): string {
     const parts = specifier.split('/');
     return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
@@ -97,8 +105,8 @@ export function resolveSpecifier(specifier: string, importer: string, ctx: Resol
         const path = resolveFile(ctx.vfs, resolve('/', target));
         return path ? {kind: 'file', path} : {kind: 'missing'};
     }
-    const shim = NODE_SHIMS[specifier.replace(/^node:/, '')];
-    if (shim) return {kind: 'url', url: `${ctx.runtimeBase}rt/node/${shim}`};
+    const shim = nodeShim(specifier, ctx.runtimeBase);
+    if (shim) return {kind: 'url', url: shim};
     if (specifier.startsWith('node:')) return {kind: 'keep'};
     return {kind: 'url', url: cdnUrl(specifier, ctx)};
 }

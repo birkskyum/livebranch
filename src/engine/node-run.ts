@@ -1,8 +1,10 @@
-import {compile} from './build.ts';
+import {compile, contentType} from './build.ts';
 import {matchGlob} from './glob.ts';
+import {computedPackages, scriptPackage} from './packages.ts';
 import {resolve} from './path.ts';
 import type {Env, Project, ScriptIo} from './project.ts';
 import {resolveFile} from './resolve.ts';
+import type {FileData} from './vfs.ts';
 
 const LITERAL = /(['"`])((?:\.{0,2}\/)?[\w@.\-/*{},?]+)\1/g;
 const MAX_PRELOAD = 2000;
@@ -54,8 +56,17 @@ export async function runNodeScript(project: Project, env: Env, script: string, 
 
     const type = 'text/javascript; charset=utf-8';
     const root = `${env.runtimeBase}~p/${project.id}`;
+    const files = new Map([...compiled.modules].map(([file, body]) => [file, {body: body as FileData, type}]));
+    const packages: Record<string, string> = {};
+    const names = computedPackages(compiled.modules.values(), project.versions);
+    for (const found of await Promise.all(names.map(name => scriptPackage(env, name, project.versions[name])))) {
+        if (!found) continue;
+        const folder = `/node_modules/${found.name}/`;
+        for (const [path, body] of found.files) files.set(folder + path, {body, type: contentType(path)});
+        for (const [specifier, path] of Object.entries(found.specifiers)) packages[specifier] = folder + path;
+    }
     await Promise.all([
-        env.publish(project.id, new Map([...compiled.modules].map(([file, body]) => [file, {body, type}]))),
+        env.publish(project.id, files),
         preload(project, compiled.modules.keys(), cwd),
     ]);
     const result = await env.runScript({
@@ -69,6 +80,7 @@ export async function runNodeScript(project: Project, env: Env, script: string, 
         remoteBase: vfs.source?.url('') ?? '',
         root,
         versions: project.versions,
+        packages,
     }, io);
     for (const [file, data] of result.written) vfs.write(file, data);
     for (const file of result.removed) vfs.remove(file);

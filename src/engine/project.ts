@@ -44,6 +44,8 @@ export interface ScriptRequest {
     /** The URL prefix that the project's files are served under. */
     root: string;
     versions: Record<string, string>;
+    /** The project path of each import specifier that loads a module of a package served with the build. */
+    packages: Record<string, string>;
 }
 
 export interface ScriptResult {

@@ -3,7 +3,7 @@
 // one message with the files and the script's URL, and gets the output and the written files back.
 import {state} from './node/state.js';
 
-const SHIMS = {'fs': 'fs.js', 'fs/promises': 'fs-promises.js', 'path': 'path.js', 'path/posix': 'path.js', 'url': 'url.js', 'process': 'process.js', 'glob': 'glob.js'};
+const SHIMS = {'fs': 'fs.js', 'fs/promises': 'fs-promises.js', 'path': 'path.js', 'path/posix': 'path.js', 'url': 'url.js', 'process': 'process.js', 'zlib': 'zlib.js', 'glob': 'glob.js'};
 
 class Exit extends Error {}
 
@@ -94,6 +94,9 @@ self.onmessage = async ({data}) => {
         if (specifier.startsWith('.')) return new URL(specifier, base).href;
         const shim = SHIMS[specifier.replace(/^node:/, '')];
         if (shim) return new URL(`./node/${shim}`, import.meta.url).href;
+        // A package that the engine fetched whole, for the modules of it that load as they are.
+        const served = data.packages[specifier];
+        if (served) return state.root + encodeURI(served);
         const parts = specifier.split('/');
         const name = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
         const version = data.versions[name];

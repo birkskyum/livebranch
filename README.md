@@ -66,7 +66,10 @@ import of the project's own package name resolves to `src/index.ts`.
 1. It lists the files of the commit with one GitHub API request and fetches only the files that
    the page reaches through imports, from raw.githubusercontent.com.
 2. It runs the project's setup commands, such as code generators, in a worker that gives them
-   `fs`, `path`, `glob` and `process` over the project's files.
+   `fs`, `path`, `glob` and `process` over the project's files, and `zlib`. Their imports of npm
+   packages load from esm.sh. A package that a script imports by names it computes, as
+   maplibre-gl-js's Unicode generator does with hundreds of files, comes from npm as one tarball
+   instead, and its modules are served with the build.
 3. tsc-rs compiles the page's scripts and everything they import at run time, without type
    checking. For maplibre-gl-js that is about 390 modules in under a second.
 4. Imports in the output are rewritten to the paths of their sources and to CDN URLs, and a
