@@ -1,7 +1,7 @@
 // Opens a small page and a maplibre-gl-js pull request on a livebranch site in Firefox, WebKit and
 // Chromium, and fails when one of them does not come up clean. The pull request is also opened by
 // its GitHub address, which compares it with the default branch, and the comparison is stopped.
-// Before that, what each side logs has to show in the console of that side.
+// Before that, what each side logs has to show in the console of that side, which is under it.
 // Each ref has to be named once there: on its own side in a comparison, in the header without one.
 // A commit that is opened by its hash has to say which branch it is the head of. Its build is then
 // reused for the branch, which has to keep its own name.
@@ -32,17 +32,21 @@ const pages = {
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628`,
-        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.sides === 'side 0|side 1' && found.alone === 1 && found.namedAlone === 1,
+        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.sides === 'side 0|side 1' && found.aligned && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.locator('nav button', {hasText: 'Console'}).click();
             await page.evaluate(() => document.querySelectorAll('iframe').forEach((frame, index) => frame.contentWindow.console.log(`side ${index}`)));
             const consoles = page.locator('section[aria-label^="Console of"]');
             await consoles.locator('li', {hasText: 'side 1'}).waitFor({timeout: 5000}).catch(() => {});
             const logged = await consoles.evaluateAll(columns => columns.map(column => [...column.querySelectorAll('li')].map(item => item.textContent).filter(text => text.startsWith('side ')).join()));
+            const aligned = await consoles.evaluateAll(columns => {
+                const frames = [...document.querySelectorAll('iframe')].map(frame => frame.getBoundingClientRect());
+                return columns.length === 2 && columns.map(column => column.getBoundingClientRect()).every((column, index) => Math.abs(column.left - frames[index].left) <= 1 && Math.abs(column.right - frames[index].right) <= 1);
+            });
             await page.getByRole('button', {name: 'Compare with…'}).click();
             await page.getByRole('button', {name: 'Stop comparing'}).click();
             await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
-            return {sides: logged.join('|'), alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+            return {sides: logged.join('|'), aligned, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'commit at the head of a branch': {

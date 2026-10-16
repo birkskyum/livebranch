@@ -289,9 +289,12 @@ export function Workbench() {
                     <Show when={state.showCode && state.session}>
                         <div class="flex w-1/2 min-w-0 border-r border-neutral-200 dark:border-neutral-800"><CodePanel /></div>
                     </Show>
-                    <div class="min-w-0 flex-1"><Preview /></div>
+                    {/* The panel sits under the preview only, so that in a comparison each console is under its page. */}
+                    <div class="flex min-w-0 flex-1 flex-col">
+                        <div class="min-h-0 flex-1"><Preview /></div>
+                        <Show when={state.showPanel}><BottomPanel /></Show>
+                    </div>
                 </div>
-                <Show when={state.showPanel}><BottomPanel /></Show>
             </Show>
         </div>
     );
