@@ -4,7 +4,10 @@
 // Before that, what each side logs has to show in the console of that side, which is under it, and
 // the lines between the files, the code, the previews and the panel have to move, also across a
 // preview. The files start 192 pixels wide and keep their width when the code panel is made wider.
-// Each ref has to be named once there: on its own side in a comparison, in the header without one.
+// The icon of the panel has to count an error of the console. Shared at the commits as previews
+// alone, the link has to name both commits, and the demo has to copy as a block for a pull request.
+// Each ref has to be named once, in the bar over its own preview, which lines up with it. The
+// comparison is stopped from that bar.
 // A commit that is opened by its hash has to say which branch it is the head of. Its build is then
 // reused for the branch, which has to keep its own name.
 // The last page stands in for GitHub's answer about the pull request, to give its description a demo.
@@ -44,17 +47,38 @@ const pages = {
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628`,
-        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.sides === 'side 0|side 1' && found.aligned && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
+        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.getByRole('tab', {name: /^Console/}).click();
             await page.evaluate(() => document.querySelectorAll('iframe').forEach((frame, index) => frame.contentWindow.console.log(`side ${index}`)));
+            await page.evaluate(() => document.querySelector('iframe').contentWindow.console.error('broken on purpose'));
             const consoles = page.locator('section[aria-label^="Console of"]');
             await consoles.locator('li', {hasText: 'side 1'}).waitFor({timeout: 5000}).catch(() => {});
             const logged = await consoles.evaluateAll(columns => columns.map(column => [...column.querySelectorAll('li')].map(item => item.textContent).filter(text => text.startsWith('side ')).join()));
-            const aligned = await consoles.evaluateAll(columns => {
+            const lineUp = columns => {
                 const frames = [...document.querySelectorAll('iframe')].map(frame => frame.getBoundingClientRect());
                 return columns.length === 2 && columns.map(column => column.getBoundingClientRect()).every((column, index) => Math.abs(column.left - frames[index].left) <= 1 && Math.abs(column.right - frames[index].right) <= 1);
+            };
+            const aligned = await consoles.evaluateAll(lineUp);
+            const bars = await page.locator('[data-side]').evaluateAll(lineUp);
+            const badge = await page.getByRole('button', {name: 'Panel, 1 error'}).count();
+            // What the page copies is kept, so that this runs where the browser may not write to the clipboard.
+            await page.evaluate(() => {
+                window.copied = [];
+                navigator.clipboard.writeText = text => Promise.resolve(void window.copied.push(text));
             });
+            const shared = await (async () => {
+                await page.getByRole('button', {name: 'Share'}).click();
+                await page.getByRole('switch', {name: /^Only the previews/}).click();
+                await page.getByRole('switch', {name: /^At these commits/}).click();
+                await page.waitForFunction(() => /#view=result&.*@[0-9a-f]{40}/.test(document.querySelector('input[aria-label="Link"]')?.value), undefined, {timeout: 10000});
+                await page.getByRole('button', {name: 'Copy', exact: true}).click();
+                await page.getByRole('button', {name: 'Copy the demo for a pull request'}).click();
+                await page.waitForFunction(() => window.copied.length === 2, undefined, {timeout: 10000});
+                const [link, block] = await page.evaluate(() => window.copied);
+                await page.keyboard.press('Escape');
+                return /[#&]gh=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && /&base=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && block.includes('<details>');
+            })().catch(error => String(error).split('\n')[0]);
             const drag = async (name, dx, dy) => {
                 const box = await page.getByRole('separator', {name}).boundingBox({timeout: 5000});
                 const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
@@ -69,17 +93,16 @@ const pages = {
                 const after = {files: await files.boundingBox(), frame: await frame.boundingBox()};
                 return [after.files.width - before.files.width, after.frame.x - before.frame.x, before.frame.height - after.frame.height].map(Math.round).join();
             }, error => String(error).split('\n')[0]);
-            await page.getByRole('button', {name: 'Compare with…'}).click();
             await page.getByRole('button', {name: 'Stop comparing'}).click();
             await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
-            return {sides: logged.join('|'), aligned, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+            return {sides: logged.join('|'), aligned, bars, badge, shared, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'commit at the head of a branch': {
         url: `${site}#gh=maplibre/maplibre-gl-js@${head}`,
         ok: found => found.canvas > 0 && found.label === `${head.slice(0, 7)} (main)` && found.reused === `main ${head.slice(0, 7)}`,
         async after(page) {
-            const label = page.locator('header span', {has: page.locator('a[title="Open the commit on GitHub"]')}).last();
+            const label = page.getByRole('toolbar', {name: 'Previews'}).locator('span', {has: page.locator('a[title="Open the commit on GitHub"]')}).last();
             const text = async () => (await label.innerText()).replace(/\s+/g, ' ');
             await label.getByText('main').waitFor({timeout: 15000});
             const found = {label: await text()};
@@ -129,7 +152,7 @@ for (const name of names) {
                     out: preview?.querySelector('#out')?.textContent,
                     canvas: preview?.querySelector('canvas')?.width,
                     frames: document.querySelectorAll('iframe').length,
-                    named: document.querySelectorAll('a[title="Open on GitHub"]').length,
+                    named: document.querySelectorAll('a[title="Open on GitHub"], [aria-label="Change the ref to compare with"]').length,
                     described: [...document.querySelectorAll('iframe')].map(frame => frame.contentDocument?.body.dataset.described),
                 };
             });

@@ -2,7 +2,8 @@ import {useEffect, useRef, type RefObject} from 'react';
 import {useShallow} from 'zustand/react/shallow';
 import type {SessionInfo} from '../engine/protocol.ts';
 import {baseSource} from '../engine/spec.ts';
-import {RefLinks, refLabel} from './RefLinks.tsx';
+import {PreviewBar} from './PreviewBar.tsx';
+import {refLabel} from './RefLinks.tsx';
 import {setState, useStore, type ConsoleEntry} from './store.ts';
 
 const MAX_ENTRIES = 500;
@@ -20,18 +21,14 @@ function Frame(props: {session: SessionInfo; gh: string | undefined; labelled: b
                 src={props.session.url}
                 allow="geolocation; fullscreen; clipboard-write; xr-spatial-tracking"
             />
-            {props.labelled && (
-                <span className="absolute top-2 left-2 rounded bg-neutral-900/80 px-2 py-0.5 font-mono text-xs text-white">
-                    <RefLinks gh={props.gh} session={props.session} />
-                </span>
-            )}
         </div>
     );
 }
 
 /**
- * The built page in a frame, or two frames when the link compares two refs. The console of a page
- * arrives as messages from the script that the build put into it, and each frame has its own.
+ * The built page in a frame, or two frames when the link compares two refs, under the bar that
+ * names them. The console of a page arrives as messages from the script that the build put into
+ * it, and each frame has its own.
  */
 export function Preview() {
     const head = useRef<HTMLIFrameElement>(null);
@@ -54,14 +51,22 @@ export function Preview() {
         return () => window.removeEventListener('message', receive);
     }, []);
 
-    const waiting = (text: string) => <div className="flex min-w-0 flex-1 items-center justify-center p-4 whitespace-pre-wrap text-muted-foreground">{text}</div>;
+    // The padding is inside, as padding of the side itself would count toward its width and move the previews off the bar.
+    const waiting = (text: string) => (
+        <div className="flex min-w-0 flex-1 items-center justify-center bg-background text-muted-foreground">
+            <p className="p-4 whitespace-pre-wrap">{text}</p>
+        </div>
+    );
     if (!session) return <div className="flex h-full">{waiting(`${step || 'starting'}…`)}</div>;
     return (
-        <div className="flex h-full gap-px bg-border">
-            {comparing && (baseSession
-                ? <Frame session={baseSession} gh={baseSource(spec)} labelled frame={base} />
-                : waiting(baseError || `building ${spec.base}…`))}
-            <Frame session={session} gh={spec.gh} labelled={comparing} frame={head} />
+        <div className="flex h-full flex-col">
+            <PreviewBar />
+            <div className="flex min-h-0 flex-1 gap-px bg-border">
+                {comparing && (baseSession
+                    ? <Frame session={baseSession} gh={baseSource(spec)} labelled frame={base} />
+                    : waiting(baseError || `building ${spec.base}…`))}
+                <Frame session={session} gh={spec.gh} labelled={comparing} frame={head} />
+            </div>
         </div>
     );
 }

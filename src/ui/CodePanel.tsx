@@ -61,6 +61,9 @@ function Directory(props: {node: Node; depth: number}) {
     );
 }
 
+/** The bars over the files and the editor, as high as the one over the previews. */
+const bar = 'flex h-7 shrink-0 items-center border-b px-3 text-xs text-muted-foreground';
+
 /**
  * The project's files and an editor for the selected one. An edit rebuilds the preview. The line
  * between them moves, and the list keeps its width when the code panel is resized.
@@ -124,14 +127,17 @@ export function CodePanel() {
             {measured && (
                 <ResizablePanelGroup orientation="horizontal" defaultLayout={layout.defaultLayout} onLayoutChanged={layout.onLayoutChanged}>
                     <ResizablePanel id="files" defaultSize={192} minSize={96} groupResizeBehavior="preserve-pixel-size">
-                        <nav className="h-full overflow-auto py-1 font-mono text-xs" aria-label="Files">
-                            <Directory node={root} depth={0} />
-                        </nav>
+                        <div className="flex h-full flex-col">
+                            <div className={bar}>Files</div>
+                            <nav className="min-h-0 flex-1 overflow-auto py-1 font-mono text-xs" aria-label="Files">
+                                <Directory node={root} depth={0} />
+                            </nav>
+                        </div>
                     </ResizablePanel>
                     <ResizableHandle aria-label="Width of the files" />
                     <ResizablePanel id="editor" minSize={120}>
                         <div className="flex h-full min-w-0 flex-col">
-                            <div className="shrink-0 truncate border-b px-3 py-1 font-mono text-xs text-muted-foreground">{file?.slice(1)}</div>
+                            <div className={cn(bar, 'font-mono')}><span className="truncate">{file?.slice(1)}</span></div>
                             <div ref={host} className="min-h-0 flex-1 overflow-hidden p-0 font-mono text-xs text-muted-foreground" />
                         </div>
                     </ResizablePanel>

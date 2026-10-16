@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useState, type ReactNode} from 'react';
 import type {SessionInfo} from '../engine/protocol.ts';
 import {branchesAt, type Branch} from './store.ts';
 
@@ -36,9 +36,10 @@ export function refLabel(gh: string | undefined, session: SessionInfo | undefine
  * The name of a ref and its commit, as links to GitHub. A source that names only a commit gets the
  * branch that the commit is the head of, in parentheses. A branch of the repository that a fork
  * was made from reads as GitHub writes it, `owner:branch`. `fallback` shows for a source that is
- * not on GitHub.
+ * not on GitHub. `name` shows the name, or the commit of a source that has none, in place of its
+ * link.
  */
-export function RefLinks(props: {gh: string | undefined; session: SessionInfo | undefined; fallback?: string}) {
+export function RefLinks(props: {gh: string | undefined; session: SessionInfo | undefined; fallback?: string; name?: (text: string) => ReactNode}) {
     const found = describeRef(props.gh, props.session);
     const sha = props.session?.commit;
     const unnamed = !found.name && found.repo && sha ? `${found.repo}@${sha}` : undefined;
@@ -60,8 +61,12 @@ export function RefLinks(props: {gh: string | undefined; session: SessionInfo | 
     if (!props.gh) return <span>{props.fallback}</span>;
     return (
         <span className="flex items-center gap-1.5 whitespace-nowrap">
-            {found.name && <a className={link} href={found.nameUrl} target="_blank" rel="noreferrer" title="Open on GitHub">{found.name}</a>}
-            {found.commit && <a className={link} href={found.commitUrl} target="_blank" rel="noreferrer" title="Open the commit on GitHub">{found.commit}</a>}
+            {props.name
+                ? props.name(found.name || found.commit)
+                : found.name && <a className={link} href={found.nameUrl} target="_blank" rel="noreferrer" title="Open on GitHub">{found.name}</a>}
+            {found.commit && (found.name || !props.name) && (
+                <a className={`${link} text-muted-foreground`} href={found.commitUrl} target="_blank" rel="noreferrer" title="Open the commit on GitHub">{found.commit}</a>
+            )}
             {branches.length > 0 && (
                 <span title={`This commit is the head of ${branches.map(branchName).join(', ')}.`}>
                     (<a className={link} href={`https://github.com/${branches[0].repo}/tree/${branches[0].name}`} target="_blank" rel="noreferrer">{branchName(branches[0])}</a>

@@ -1,18 +1,21 @@
 import {MarkGithubIcon} from '@primer/octicons-react';
-import {useEffect, useRef, useState, type ReactNode} from 'react';
+import {PanelBottom, PanelLeft} from 'lucide-react';
+import {type ReactNode} from 'react';
 import {useDefaultLayout} from 'react-resizable-panels';
 import {useShallow} from 'zustand/react/shallow';
 import {Button} from '@/components/ui/button.tsx';
-import {Input} from '@/components/ui/input.tsx';
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@/components/ui/resizable.tsx';
+import {Separator} from '@/components/ui/separator.tsx';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs.tsx';
+import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip.tsx';
 import {cn} from '@/lib/utils.ts';
 import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {CodePanel} from './CodePanel.tsx';
 import {Preview} from './Preview.tsx';
-import {RefLinks, refLabel} from './RefLinks.tsx';
+import {refLabel} from './RefLinks.tsx';
+import {Share} from './Share.tsx';
 import {Terminal} from './Terminal.tsx';
-import {REPOSITORY, allProblems, compareWith, current, defaultBranch, demoBlock, setState, setView, shareLink, useStore, type ConsoleEntry, type State, type Tab} from './store.ts';
+import {REPOSITORY, allProblems, setState, setView, useStore, type ConsoleEntry, type State, type Tab} from './store.ts';
 
 /** A header button that shows whether its part of the workbench is open. */
 const toggle = 'aria-pressed:bg-muted aria-pressed:text-foreground';
@@ -37,132 +40,60 @@ function Status() {
     return <span className="truncate text-muted-foreground" data-testid="status">{text}</span>;
 }
 
+/** A header button that shows or hides a part of the workbench, drawn as that part of the layout. */
+function Toggle(props: {label: string; pressed: boolean; onClick(): void; children: ReactNode}) {
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-sm" className={cn(toggle, 'relative')} aria-pressed={props.pressed} aria-label={props.label} onClick={props.onClick}>
+                    {props.children}
+                </Button>
+            </TooltipTrigger>
+            <TooltipContent>{props.label}</TooltipContent>
+        </Tooltip>
+    );
+}
+
+/**
+ * The project: its repository and how its build went, with the parts of the workbench and the
+ * sharing on the right. What runs, and what it is compared with, is named over the previews.
+ */
 function Header() {
-    const [copied, setCopied] = useState<'link' | 'block'>();
-    const {gh, session, showCode, showPanel, tab} = useStore(useShallow(state => ({gh: state.spec.gh, session: state.session, showCode: state.showCode, showPanel: state.showPanel, tab: state.tab})));
+    const {gh, label, showCode, showPanel, opened} = useStore(useShallow(state => ({
+        gh: state.spec.gh,
+        label: state.session?.label,
+        showCode: state.showCode,
+        showPanel: state.showPanel,
+        opened: state.session !== undefined,
+    })));
     const problems = useProblems();
     const logged = useLogged();
-    const copy = async (what: 'link' | 'block') => {
-        await navigator.clipboard.writeText(await (what === 'link' ? shareLink() : demoBlock()));
-        setCopied(what);
-        setTimeout(() => setCopied(undefined), 1500);
-    };
-    const errors = problems.some(problem => problem.category === 'error');
-    const loggedErrors = logged.some(entry => entry.level === 'error');
-    /** Opens the panel on a tab, or closes it when that tab already shows. */
-    const toggleTab = (next: Tab) => {
-        if (showPanel && tab === next) setView({showPanel: false});
-        else setView({showPanel: true, tab: next});
-    };
+    const errors = problems.filter(problem => problem.category === 'error').length + logged.filter(entry => entry.level === 'error').length;
+    const repository = gh ? parseGithubRef(gh) : undefined;
     return (
         <header className="flex h-10 shrink-0 items-center gap-3 border-b px-3">
             <a className="font-semibold" href="#">livebranch</a>
-            <Sources />
-            {session && gh && <Compare />}
+            {repository
+                ? (
+                    <a className="truncate font-mono text-xs text-muted-foreground hover:underline" href={`https://github.com/${repository.owner}/${repository.repo}`} target="_blank" rel="noreferrer" title="The repository on GitHub">
+                        {repository.owner}/{repository.repo}
+                    </a>
+                )
+                : label && <span className="truncate font-mono text-xs text-muted-foreground">{label}</span>}
             <Status />
             <div className="ml-auto flex items-center gap-1">
-                <Button variant="ghost" size="sm" className={toggle} aria-pressed={showCode} onClick={() => setView({showCode: !showCode})}>Code</Button>
-                <Button variant="ghost" size="sm" className={cn(toggle, errors && 'text-destructive aria-pressed:text-destructive')} aria-pressed={showPanel && tab === 'problems'} onClick={() => toggleTab('problems')}>
-                    Problems{problems.length ? ` (${problems.length})` : ''}
-                </Button>
-                <Button variant="ghost" size="sm" className={cn(toggle, loggedErrors && 'text-destructive aria-pressed:text-destructive')} aria-pressed={showPanel && tab === 'console'} onClick={() => toggleTab('console')}>
-                    Console{logged.length ? ` (${logged.length})` : ''}
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setState(draft => { draft.runs++; })}>Reload</Button>
-                <Button variant="ghost" size="sm" onClick={() => copy('link')}>{copied === 'link' ? 'Copied' : 'Copy link'}</Button>
-                {gh && (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Copies the demo as a code block for the description of a pull request. Opened here by its address, the pull request then runs it."
-                        onClick={() => copy('block')}
-                    >
-                        {copied === 'block' ? 'Copied' : 'Copy for PR'}
-                    </Button>
-                )}
+                <Toggle label="Code" pressed={showCode} onClick={() => setView({showCode: !showCode})}><PanelLeft /></Toggle>
+                <Toggle label={errors ? `Panel, ${errors} ${errors === 1 ? 'error' : 'errors'}` : 'Panel'} pressed={showPanel} onClick={() => setView({showPanel: !showPanel})}>
+                    <PanelBottom />
+                    {errors > 0 && <span className="absolute -top-1 -right-1 min-w-4 rounded-full bg-red-600 px-1 text-[10px] leading-4 font-semibold text-white">{errors}</span>}
+                </Toggle>
+                <Separator orientation="vertical" className="mx-1 h-4 self-center" />
+                {opened && <Share />}
                 <Button variant="ghost" size="icon-sm" asChild>
                     <a href={REPOSITORY} target="_blank" rel="noreferrer" title="livebranch on GitHub" aria-label="livebranch on GitHub"><MarkGithubIcon /></a>
                 </Button>
             </div>
         </header>
-    );
-}
-
-/**
- * The ref that is running, linked to its page on GitHub and to its commit. In a comparison each
- * side names its own ref, so the header does not name them again.
- */
-function Sources() {
-    const {gh, session, comparing} = useStore(useShallow(state => ({gh: state.spec.gh, session: state.session, comparing: baseSource(state.spec) !== undefined})));
-    if (session && comparing) return null;
-    return (
-        <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
-            {session ? <RefLinks gh={gh} session={session} fallback={session.label} /> : <span>{gh ?? ''}</span>}
-        </span>
-    );
-}
-
-/** The field that names the ref to compare with. */
-function CompareForm(props: {close(): void}) {
-    const input = useRef<HTMLInputElement>(null);
-    const base = useStore(state => state.spec.base);
-    useEffect(() => {
-        input.current?.focus();
-        input.current?.select();
-    }, []);
-    const apply = (ref: string) => {
-        props.close();
-        void compareWith(ref);
-    };
-    return (
-        <form
-            className="flex shrink-0 items-center gap-1"
-            onSubmit={event => { event.preventDefault(); apply(input.current?.value ?? ''); }}
-            onKeyDown={event => { if (event.key === 'Escape') props.close(); }}
-        >
-            <Input
-                ref={input}
-                className="h-7 w-44 font-mono text-xs md:text-xs"
-                aria-label="Ref to compare with"
-                placeholder="branch, tag, commit or #123"
-                spellCheck={false}
-                defaultValue={base ?? ''}
-            />
-            <Button variant="ghost" size="sm" type="submit">Compare</Button>
-            {base && <Button variant="ghost" size="sm" type="button" onClick={() => apply('')}>Stop comparing</Button>}
-            <Button variant="ghost" size="sm" type="button" onClick={props.close}>Cancel</Button>
-        </form>
-    );
-}
-
-/**
- * Starts, changes and stops the comparison with another ref. The first click compares with the
- * repository's default branch, which is what a branch or a pull request is mostly held against.
- */
-function Compare() {
-    const [editing, setEditing] = useState(false);
-    const {pull, spec} = useStore(useShallow(state => ({pull: state.pull, spec: state.spec})));
-    const start = async () => {
-        const {spec, pull} = current();
-        const gh = spec.gh!;
-        const branch = spec.base ? undefined : pull?.base || await defaultBranch(gh);
-        // The default branch next to itself shows nothing, so then the ref is asked for.
-        if (branch && !['HEAD', branch].includes(parseGithubRef(gh).ref)) void compareWith(branch);
-        else setEditing(true);
-    };
-    // The address of a pull request compares with the default branch, which is not where every one goes.
-    const target = pull?.base && spec.base === pull.defaultBranch && pull.base !== spec.base ? pull.base : undefined;
-    return (
-        <>
-            {editing
-                ? <CompareForm close={() => setEditing(false)} />
-                : <Button variant="ghost" size="sm" className="shrink-0" onClick={start}>{spec.base ? 'Compare with…' : 'Compare'}</Button>}
-            {!editing && target && (
-                <Button variant="ghost" size="sm" className="shrink-0" title={`This pull request goes into ${target}, not into ${spec.base}.`} onClick={() => void compareWith(target)}>
-                    Goes into {target}
-                </Button>
-            )}
-        </>
     );
 }
 

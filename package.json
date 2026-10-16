@@ -33,6 +33,7 @@
     "es-module-lexer": "^3.0.3",
     "immer": "^11.1.21",
     "just-bash": "^3.6.0",
+    "lucide-react": "^1.57.0",
     "pako": "^3.0.2",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",

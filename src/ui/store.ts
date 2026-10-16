@@ -289,15 +289,38 @@ function demoFiles(): Record<string, string> {
     return files;
 }
 
+/** A source at a commit, in the same directory of the repository. */
+function atCommit(gh: string, commit: string): string {
+    const {owner, repo, subdir} = parseGithubRef(gh);
+    return `${owner}/${repo}@${commit}${subdir ? `:${subdir}` : ''}`;
+}
+
+/** Whether a source names a commit, which later pushes do not change. */
+export function isCommit(gh: string): boolean {
+    return /^[0-9a-f]{40}$/.test(parseGithubRef(gh).ref);
+}
+
 /**
  * The link of the open project with the edits in it, and with `change` applied. A demo from a
  * pull request's description stays out of the link until it is edited, so that the link keeps
- * following the description.
+ * following the description. A pinned link names the commits that run now instead of their
+ * branches, and carries the description's demo, which could change too.
  */
-export async function shareLink(resultOnly = isResultOnly(), change: Partial<LinkSpec> = {}): Promise<string> {
-    const {edits, spec} = current();
+export async function shareLink(resultOnly = isResultOnly(), change: Partial<LinkSpec> = {}, pin = false): Promise<string> {
+    const {edits, spec, session, base: compared} = current();
     const edited = Object.keys(edits).length > 0;
-    const params = await encodeSpec({...spec, files: edited ? demoFiles() : spec.files, ...change});
+    let link: LinkSpec = {...spec, files: edited ? demoFiles() : spec.files};
+    if (pin && spec.gh && session?.commit) {
+        const against = baseSource(spec);
+        const files = demoFiles();
+        link = {
+            ...link,
+            gh: atCommit(spec.gh, session.commit),
+            base: against && compared?.commit ? atCommit(against, compared.commit) : spec.base,
+            files: Object.keys(files).length ? files : undefined,
+        };
+    }
+    const params = await encodeSpec({...link, ...change});
     return `${base}#${resultOnly ? 'view=result&' : ''}${params}`;
 }
 
@@ -319,15 +342,28 @@ export async function demoBlock(): Promise<string> {
     return demoSection(files, `The demo runs ${against ? `on ${against} and ` : ''}on this pull request at ${where}`);
 }
 
-/** The default branch of a source's repository, or undefined where the site has no reader to ask. */
-export async function defaultBranch(gh: string): Promise<string | undefined> {
+const defaultBranches = new Map<string, Promise<string | undefined>>();
+
+/** The default branch of a source's repository, or undefined where the site has no reader to ask. It is asked once per repository. */
+export function defaultBranch(gh: string): Promise<string | undefined> {
+    let repository: string;
     try {
         const {owner, repo} = parseGithubRef(gh);
-        const response = await fetch(`${base}api/github/default-branch?repo=${owner}/${repo}`);
-        return response.ok ? (await response.json()).branch ?? undefined : undefined;
+        repository = `${owner}/${repo}`;
     } catch {
-        return undefined;
+        return Promise.resolve(undefined);
     }
+    if (!defaultBranches.has(repository)) {
+        defaultBranches.set(repository, (async () => {
+            try {
+                const response = await fetch(`${base}api/github/default-branch?repo=${repository}`);
+                return response.ok ? (await response.json()).branch ?? undefined : undefined;
+            } catch {
+                return undefined;
+            }
+        })());
+    }
+    return defaultBranches.get(repository)!;
 }
 
 export interface Branch {

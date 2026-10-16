@@ -32,11 +32,12 @@ pull request shows its latest push. A link that names a commit never changes.
 
 A demo does not need a page. A link can carry a `demo.ts` alone, which runs in a page made from
 the project's template. For maplibre-gl-js that page has the stylesheet and a full-size `#map`.
-With `base=main` the same script runs against main and against the branch, side by side. The
-Compare button in the header does the same: its first click adds the repository's default branch,
-and after that it changes the ref or stops comparing. A pull request that is opened by its GitHub
-address (`livebranch.dev/owner/repo/pull/123`) starts next to the default branch. Each side has
-its own console, under its preview. The file list, the code and the panel below the previews are
+With `base=main` the same script runs against main and against the branch, side by side. A bar over
+the previews names each side and does the same. Its Compare button adds the branch that a pull
+request goes into, or the repository's default branch, the name of the other side changes it, and
+its cross stops comparing. A pull request that is opened by its GitHub address
+(`livebranch.dev/owner/repo/pull/123`) starts next to the default branch. Each side has its own
+console, under its preview. The file list, the code and the panel below the previews are
 resized by dragging the lines between them, and the app keeps their sizes for the next visit.
 
 A pull request can carry its demo in its description, as a code block that is marked for this
@@ -53,7 +54,7 @@ new maplibregl.Map({container: 'map', style: 'https://demotiles.maplibre.org/sty
 
 GitHub highlights the block by its first word and shows nothing of the rest. A further word names
 the file (`ts livebranch helper.ts`). Without one a `ts` block is `demo.ts` and an `html` block is
-`index.html`. The Copy for PR button copies the open demo as such a block, folded away in a
+`index.html`. The Share button copies the open demo as such a block, folded away in a
 `<details>` element under a line that names the address. The page reads the
 description from GitHub's API (`src/engine/sources/pull.ts`), one request for each opened pull
 request, and only for a link without files or an `entry` of its own. Past the 60 requests an hour
@@ -176,7 +177,8 @@ it went.
   comparison the other ref's build is `base` and its console is `baseConsole`.
 - `window.__livebranch.exec('grep -rn foo src')` runs a shell command over the project.
 - `window.__livebranch.edit('/index.html', text)` changes a file and rebuilds.
-- `window.__livebranch.link()` returns the link with the edits in it.
+- `window.__livebranch.link()` returns the link with the edits in it. `link(true, true)` is the link
+  of the previews alone, at the commits that run, as the Share button makes it.
 
 ## Development
 
