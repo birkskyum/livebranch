@@ -27,7 +27,10 @@ export interface State {
     pull: PullRequest | undefined;
     /** Why the description could not be read, when it could not. */
     pullProblem: string;
+    /** What the page logged. In a comparison, the page of the link's own ref. */
     console: ConsoleEntry[];
+    /** What the page of the ref that the link compares with logged. */
+    baseConsole: ConsoleEntry[];
     /** Counts reloads of the preview. */
     runs: number;
     tab: Tab;
@@ -55,6 +58,7 @@ export const [state, setState] = createStore<State>({
     pull: undefined,
     pullProblem: '',
     console: [],
+    baseConsole: [],
     runs: 0,
     tab: 'console',
     showCode: true,
@@ -117,6 +121,7 @@ function finish(session: SessionInfo): void {
         draft.phase = 'ready';
         draft.building = false;
         draft.console = [];
+        draft.baseConsole = [];
         draft.runs++;
         draft.file ??= session.file;
         draft.typeProblems = [];

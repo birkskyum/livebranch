@@ -32,7 +32,7 @@ function Frame(props: {session: SessionInfo; gh: string | undefined; labelled: b
 
 /**
  * The built page in a frame, or two frames when the link compares two refs. The console of a page
- * arrives as messages from the script that the build put into it.
+ * arrives as messages from the script that the build put into it, and each frame has its own.
  */
 export function Preview() {
     let head: HTMLIFrameElement | undefined;
@@ -43,11 +43,11 @@ export function Preview() {
         const receive = (event: MessageEvent) => {
             const fromBase = base !== undefined && event.source === base.contentWindow;
             if ((!fromBase && event.source !== head?.contentWindow) || event.data?.livebranch !== 'console') return;
-            const text = (event.data.args as string[]).join(' ');
-            const entry: ConsoleEntry = {level: event.data.level, text: fromBase ? `[${refLabel(baseSource(state.spec), state.base)}] ${text}` : text};
+            const entry: ConsoleEntry = {level: event.data.level, text: (event.data.args as string[]).join(' ')};
             setState(produce(draft => {
-                draft.console.push(entry);
-                if (draft.console.length > MAX_ENTRIES) draft.console.shift();
+                const logged = fromBase ? draft.baseConsole : draft.console;
+                logged.push(entry);
+                if (logged.length > MAX_ENTRIES) logged.shift();
             }));
         };
         window.addEventListener('message', receive);

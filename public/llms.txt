@@ -112,6 +112,7 @@ Any headless browser can open a link. The page says how it went:
 - `window.__livebranch.state.session` has `problems` (from the compile), `steps`, `url` (the running page) and `label`.
 - `window.__livebranch.state.typeProblems` has the type errors. They are final when `state.checking` is false.
 - `window.__livebranch.state.console` has what the page logged, and its uncaught errors.
+- In a comparison, `window.__livebranch.state.base` is the build of the other ref and `state.baseConsole` has what its page logged. The app shows the two consoles side by side.
 - `window.__livebranch.exec('grep -rn foo src')` runs a shell command over the project's files (bash, with `tsc` and `node`).
 - `window.__livebranch.edit('/demo.ts', text)` changes a file and rebuilds. `window.__livebranch.link()` returns the link with the edits in it.
 - `window.__livebranch.block()` returns the demo as code blocks for the description of a pull request.

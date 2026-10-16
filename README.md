@@ -170,7 +170,8 @@ it went.
 
 - `document.documentElement.dataset.livebranch` is `loading`, `ready` or `failed`.
 - `window.__livebranch.state` has the session (`session.problems`, `session.steps`, `session.url`), the
-  type errors (`typeProblems`, final when `checking` is false) and the page's console (`console`).
+  type errors (`typeProblems`, final when `checking` is false) and the page's console (`console`). In a
+  comparison the other ref's build is `base` and its console is `baseConsole`.
 - `window.__livebranch.exec('grep -rn foo src')` runs a shell command over the project.
 - `window.__livebranch.edit('/index.html', text)` changes a file and rebuilds.
 - `window.__livebranch.link()` returns the link with the edits in it.

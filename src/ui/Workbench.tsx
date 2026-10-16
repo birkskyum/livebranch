@@ -3,10 +3,13 @@ import {CodePanel} from './CodePanel.tsx';
 import {Preview} from './Preview.tsx';
 import {Terminal} from './Terminal.tsx';
 import {baseSource, parseGithubRef} from '../engine/spec.ts';
-import {RefLinks} from './RefLinks.tsx';
-import {allProblems, compareWith, defaultBranch, demoBlock, setState, setView, shareLink, state, type Tab} from './store.ts';
+import {RefLinks, refLabel} from './RefLinks.tsx';
+import {allProblems, compareWith, defaultBranch, demoBlock, setState, setView, shareLink, state, type ConsoleEntry, type Tab} from './store.ts';
 
 const button = 'rounded px-2 py-1 hover:bg-neutral-200 dark:hover:bg-neutral-800';
+
+/** What both pages of a comparison logged, or the one page. */
+const allLogged = () => [...state.console, ...state.baseConsole];
 
 function seconds(ms: number): string {
     return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
@@ -38,8 +41,8 @@ function Header() {
         setTimeout(() => setCopied(), 1500);
     };
     const errors = () => allProblems().filter(problem => problem.category === 'error').length;
-    const logged = () => state.console.length;
-    const loggedErrors = () => state.console.some(entry => entry.level === 'error');
+    const logged = () => allLogged().length;
+    const loggedErrors = () => allLogged().some(entry => entry.level === 'error');
     /** Opens the panel on a tab, or closes it when that tab already shows. */
     const toggleTab = (tab: Tab) => {
         if (state.showPanel && state.tab === tab) setView({showPanel: false});
@@ -173,10 +176,10 @@ function Problems() {
     );
 }
 
-function Console() {
+function Entries(props: {entries: ConsoleEntry[]}) {
     return (
         <ul class="flex flex-col font-mono text-xs">
-            <For each={state.console} fallback={<li class="px-3 py-2 text-neutral-500">The page has logged nothing.</li>}>
+            <For each={props.entries} fallback={<li class="px-3 py-2 text-neutral-500">The page has logged nothing.</li>}>
                 {entry => (
                     <li
                         class="whitespace-pre-wrap border-b border-neutral-100 px-3 py-1 dark:border-neutral-900"
@@ -187,6 +190,27 @@ function Console() {
                 )}
             </For>
         </ul>
+    );
+}
+
+function ConsoleColumn(props: {label: string; entries: ConsoleEntry[]}) {
+    return (
+        <section class="flex min-w-0 flex-1 flex-col" aria-label={`Console of ${props.label}`}>
+            <h3 class="shrink-0 border-b border-neutral-200 px-3 py-1 font-mono text-xs text-neutral-500 dark:border-neutral-800">{props.label}</h3>
+            <div class="min-h-0 flex-1 overflow-auto"><Entries entries={props.entries} /></div>
+        </section>
+    );
+}
+
+/** What the page logged. In a comparison each page has a console of its own, in the order of the previews. */
+function Console() {
+    return (
+        <Show when={baseSource(state.spec)} fallback={<Entries entries={state.console} />}>
+            <div class="flex h-full divide-x divide-neutral-200 dark:divide-neutral-800">
+                <ConsoleColumn label={refLabel(baseSource(state.spec), state.base) || state.spec.base!} entries={state.baseConsole} />
+                <ConsoleColumn label={refLabel(state.spec.gh, state.session) || state.session?.label || ''} entries={state.console} />
+            </div>
+        </Show>
     );
 }
 
@@ -215,7 +239,7 @@ function BottomPanel() {
     const errors = () => allProblems().length;
     const tabs = (): {id: Tab; label: string}[] => [
         {id: 'problems', label: errors() ? `Problems (${errors()})` : 'Problems'},
-        {id: 'console', label: state.console.length ? `Console (${state.console.length})` : 'Console'},
+        {id: 'console', label: allLogged().length ? `Console (${allLogged().length})` : 'Console'},
         {id: 'terminal', label: 'Terminal'},
         {id: 'build', label: 'Build'},
     ];

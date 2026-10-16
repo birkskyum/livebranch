@@ -1,6 +1,7 @@
 // Opens a small page and a maplibre-gl-js pull request on a livebranch site in Firefox, WebKit and
 // Chromium, and fails when one of them does not come up clean. The pull request is also opened by
 // its GitHub address, which compares it with the default branch, and the comparison is stopped.
+// Before that, what each side logs has to show in the console of that side.
 // Each ref has to be named once there: on its own side in a comparison, in the header without one.
 // A commit that is opened by its hash has to say which branch it is the head of. Its build is then
 // reused for the branch, which has to keep its own name.
@@ -31,12 +32,17 @@ const pages = {
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628`,
-        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.alone === 1 && found.namedAlone === 1,
+        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.sides === 'side 0|side 1' && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
+            await page.locator('nav button', {hasText: 'Console'}).click();
+            await page.evaluate(() => document.querySelectorAll('iframe').forEach((frame, index) => frame.contentWindow.console.log(`side ${index}`)));
+            const consoles = page.locator('section[aria-label^="Console of"]');
+            await consoles.locator('li', {hasText: 'side 1'}).waitFor({timeout: 5000}).catch(() => {});
+            const logged = await consoles.evaluateAll(columns => columns.map(column => [...column.querySelectorAll('li')].map(item => item.textContent).filter(text => text.startsWith('side ')).join()));
             await page.getByRole('button', {name: 'Compare with…'}).click();
             await page.getByRole('button', {name: 'Stop comparing'}).click();
             await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
-            return {alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+            return {sides: logged.join('|'), alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'commit at the head of a branch': {
@@ -82,14 +88,14 @@ for (const name of names) {
             await page.waitForFunction(() => !window.__livebranch.state.checking, undefined, {timeout: 60000});
             await page.waitForTimeout(3000);
             found = await page.evaluate(() => {
-                const {phase, error, session, typeProblems, console: logged} = window.__livebranch.state;
+                const {phase, error, session, typeProblems, console: logged, baseConsole} = window.__livebranch.state;
                 const preview = document.querySelector('iframe')?.contentDocument;
                 return {
                     phase,
                     error,
                     seconds: session && (session.ms / 1000).toFixed(1),
                     problems: [...session?.problems ?? [], ...typeProblems].map(problem => problem.text),
-                    logged: logged.filter(entry => entry.level === 'error').map(entry => entry.text),
+                    logged: [...logged, ...baseConsole ?? []].filter(entry => entry.level === 'error').map(entry => entry.text),
                     out: preview?.querySelector('#out')?.textContent,
                     canvas: preview?.querySelector('canvas')?.width,
                     frames: document.querySelectorAll('iframe').length,
