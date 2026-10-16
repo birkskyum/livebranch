@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "author": "Birk Skyum",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "livebranch": "bin/livebranch.ts"
