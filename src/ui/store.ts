@@ -46,7 +46,13 @@ export interface State {
     /** Type errors of the page and the link's files. They arrive after the preview. */
     typeProblems: Problem[];
     checking: boolean;
+    /** Whether the views of a comparison follow each other. It is kept for the next visit. */
+    syncViews: boolean;
+    /** Whether both pages of the comparison can show the other's views, through their adapter. */
+    syncable: boolean;
 }
+
+const SYNC_KEY = 'livebranch-sync-views';
 
 export const useStore = create<State>()(() => ({
     phase: 'landing',
@@ -69,6 +75,8 @@ export const useStore = create<State>()(() => ({
     building: false,
     typeProblems: [],
     checking: false,
+    syncViews: localStorage.getItem(SYNC_KEY) !== 'off',
+    syncable: false,
 }));
 
 /** The state now, for code outside the components. */
@@ -265,6 +273,12 @@ export function edit(path: string, text: string): void {
             setState({building: false, error: error instanceof Error ? error.message : String(error)});
         }
     }, 350);
+}
+
+/** Lets the views of a comparison follow each other, or move on their own. */
+export function setSyncViews(on: boolean): void {
+    localStorage.setItem(SYNC_KEY, on ? 'on' : 'off');
+    setState({syncViews: on});
 }
 
 /** Whether only the preview shows. */

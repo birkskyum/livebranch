@@ -37,8 +37,10 @@ the previews names each side and does the same. Its Compare button adds the bran
 request goes into, or the repository's default branch, the name of the other side changes it, and
 its cross stops comparing. A pull request that is opened by its GitHub address
 (`livebranch.dev/owner/repo/pull/123`) starts next to the default branch. Each side has its own
-console, under its preview. The file list, the code and the panel below the previews are
-resized by dragging the lines between them, and the app keeps their sizes for the next visit.
+console, under its preview. Where the adapter says how, such as for the maps of maplibre-gl-js, a
+view moved on one side moves on the other too, and a button in the bar lets them move apart. The
+file list, the code and the panel below the previews are resized by dragging the lines between
+them, and the app keeps their sizes for the next visit.
 
 A pull request can carry its demo in its description, as a code block that is marked for this
 site. Opened by its address, the pull request then runs that demo on both sides, so the address is
@@ -103,7 +105,7 @@ array of lines.
 | Field | Meaning |
 | --- | --- |
 | `entry` | The page to open, or the script to run. |
-| `template` | The page for an entry that is a script. `<!--entry-->` marks where the script goes. |
+| `template` | The page for an entry that is a script. `<!--entry-->` marks where the script goes. A script in it can keep the views of a comparison the same, through `window.livebranch.sync` ([livebranch-adapters](https://github.com/birkskyum/livebranch-adapters#keeping-the-views-of-a-comparison-the-same)). |
 | `setup` | Shell commands that run before the build. `node script.ts` runs the script in the browser. |
 | `alias` | Bare import specifiers that point at a project file or a URL. |
 | `entries` | Modules that nothing imports statically but the page loads, such as worker scripts. |

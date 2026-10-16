@@ -1,4 +1,4 @@
-import {ArrowLeftRight, Check, ChevronDown, RotateCw, X} from 'lucide-react';
+import {ArrowLeftRight, Check, ChevronDown, Link, RotateCw, Unlink, X} from 'lucide-react';
 import {useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {useShallow} from 'zustand/react/shallow';
 import {Button} from '@/components/ui/button.tsx';
@@ -7,7 +7,7 @@ import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover.t
 import {cn} from '@/lib/utils.ts';
 import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {RefLinks} from './RefLinks.tsx';
-import {compareWith, defaultBranch, setState, useStore} from './store.ts';
+import {compareWith, defaultBranch, setState, setSyncViews, useStore} from './store.ts';
 
 interface Target {
     ref: string;
@@ -39,10 +39,18 @@ function useTargets(): Target[] {
     return targets.filter(target => target.ref !== ref && !(ref === 'HEAD' && target.ref === branch));
 }
 
-/** A small button of the bar. */
-function BarButton(props: {label: string; onClick(): void; children: ReactNode}) {
+/** A small button of the bar. One that toggles shows whether it is on. */
+function BarButton(props: {label: string; title?: string; pressed?: boolean; onClick(): void; children: ReactNode}) {
     return (
-        <Button variant="ghost" size="icon-xs" className="text-muted-foreground" title={props.label} aria-label={props.label} onClick={props.onClick}>
+        <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-muted-foreground aria-pressed:text-foreground"
+            title={props.title ?? props.label}
+            aria-label={props.label}
+            aria-pressed={props.pressed}
+            onClick={props.onClick}
+        >
             {props.children}
         </Button>
     );
@@ -89,12 +97,14 @@ function RefPicker(props: {trigger: ReactNode; label: string}) {
  * under them do, and starts, changes and stops the comparison. The previews themselves stay clear.
  */
 export function PreviewBar() {
-    const {spec, session, compared, baseError, pull} = useStore(useShallow(state => ({
+    const {spec, session, compared, baseError, pull, syncViews, syncable} = useStore(useShallow(state => ({
         spec: state.spec,
         session: state.session,
         compared: state.base,
         baseError: state.baseError,
         pull: state.pull,
+        syncViews: state.syncViews,
+        syncable: state.syncable,
     })));
     const targets = useTargets();
     const against = baseSource(spec);
@@ -136,6 +146,16 @@ export function PreviewBar() {
                         </Button>
                     )
                     : <RefPicker label="Compare with another ref" trigger={<span className="flex items-center gap-1 font-sans"><ArrowLeftRight />Compare with…</span>} />)}
+                {against !== undefined && syncable && (
+                    <BarButton
+                        label="Move the views together"
+                        title={syncViews ? 'The views move together. Click to move them apart.' : 'The views move apart. Click to move them together.'}
+                        pressed={syncViews}
+                        onClick={() => setSyncViews(!syncViews)}
+                    >
+                        {syncViews ? <Link /> : <Unlink />}
+                    </BarButton>
+                )}
                 {reload}
             </div>
         </div>

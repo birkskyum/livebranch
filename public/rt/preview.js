@@ -1,4 +1,5 @@
-// Runs first in the preview page. Reports its console output and uncaught errors to the app.
+// Runs first in the preview page. Reports its console output and uncaught errors to the app, and
+// carries the views that a comparison keeps the same.
 (() => {
     // WebKit loads the imports of a module worker through the service worker only for the first of
     // several workers that start at the same moment from one URL. The others fail to load. A
@@ -62,4 +63,33 @@
     }, true);
     window.addEventListener('unhandledrejection', event => send('error', [event.reason]));
     window.addEventListener('load', () => window.parent.postMessage({livebranch: 'load', title: document.title}, '*'));
+
+    // Keeps the views of a comparison the same, such as the cameras of two maps. A library's adapter
+    // says how its views are shown and offers the ones that input gives them. The app carries each
+    // view to the same thing on the other side, the first map to the first map.
+    const followers = [];
+    let following = false;
+    window.livebranch = {
+        sync: {
+            /** Says how the next thing on the page shows a view, and returns its number. */
+            follow(show) {
+                followers.push(show);
+                window.parent.postMessage({livebranch: 'follow', index: followers.length - 1}, '*');
+                return followers.length - 1;
+            },
+            /** Offers a view of a thing to the other side. A view that came from there is not sent back. */
+            publish(index, view) {
+                if (!following) window.parent.postMessage({livebranch: 'view', index, view}, '*');
+            },
+        },
+    };
+    window.addEventListener('message', event => {
+        if (event.source !== window.parent || event.data?.livebranch !== 'view') return;
+        following = true;
+        try {
+            followers[event.data.index]?.(event.data.view);
+        } finally {
+            following = false;
+        }
+    });
 })();
