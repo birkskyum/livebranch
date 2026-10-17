@@ -7,6 +7,7 @@ import type {Shell} from './shell.ts';
 import type {LinkSpec} from './spec.ts';
 import type {WasmModule} from './tsc.ts';
 import {isBinaryPath} from './vfs.ts';
+import tsrsWasm from '@tsrs/wasm/tsrs.wasm?url';
 
 const KEPT_BUILDS = 12;
 const SCRIPT_TIMEOUT_MS = 120_000;
@@ -74,7 +75,7 @@ function createEnv(base: string): Env {
         },
         runtimeBase: base,
         wasm() {
-            wasm ??= WebAssembly.compileStreaming(fetch(`${base}tsc/ts_rust.wasm`));
+            wasm ??= WebAssembly.compileStreaming(fetch(tsrsWasm));
             return wasm;
         },
         async publish(id, files) {

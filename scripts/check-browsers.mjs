@@ -139,7 +139,12 @@ const pages = {
                 return [after.files.width - before.files.width, after.frame.x - before.frame.x, before.frame.height - after.frame.height].map(Math.round).join();
             }, error => String(error).split('\n')[0]);
             await page.getByRole('button', {name: 'Stop comparing'}).click();
-            await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
+            // The page says ready from before until it opens the link again, so the app's own state is waited for.
+            await page.waitForFunction(() => {
+                const {state} = window.__livebranch;
+                return !location.hash.includes('base=') && !state.spec.base && state.phase === 'ready' && state.session;
+            }, undefined, {timeout: 90000});
+            await page.waitForTimeout(300);
             return {sides: logged.join('|'), aligned, bars, badge, tip, mirrors, replays, shared, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },

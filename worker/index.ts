@@ -1,7 +1,7 @@
 // The app as a Worker: the static build from dist, and the engine behind an HTTP API, for agents
 // and scripts that have no browser. It is the same compile and type check as in the tab. It runs
 // on Cloudflare, and on workerd or celld for self-hosting.
-import tscModule from '../public/tsc/ts_rust.wasm';
+import tscModule from '@tsrs/wasm/tsrs.wasm';
 import {checkProject} from '../src/engine/check.ts';
 import {openProject, type Env as EngineEnv} from '../src/engine/project.ts';
 import {branchesAt, defaultBranch, listTree, resolveRef} from '../src/engine/sources/git.ts';

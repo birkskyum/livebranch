@@ -1,4 +1,4 @@
-import {runTscAsync, type Diagnostic, type HostFileSystem, type WasmModule} from '../vendor/tsc-rs/core.js';
+import {EXIT_CRASHED, NotFoundError, makeRequest, parseReply, runTscAsync, type Diagnostic, type HostFileSystem, type WasmModule} from '@tsrs/wasm/core';
 import {isSourcePath} from './resolve.ts';
 import type {Vfs} from './vfs.ts';
 
@@ -50,14 +50,20 @@ export function sourceCost(path: string, length: number): number {
 }
 
 const fileDecoder = new TextDecoder('utf-8', {ignoreBOM: true});
+const encoder = new TextEncoder();
 
-/** Runs tsc-rs once over the project's files. The compiler cannot wait for a fetch, so a file that is not loaded is a miss. */
+/**
+ * Runs tsrs once over the project's files. The compiler cannot wait for a fetch, so a file that is
+ * not loaded is a miss. tsrs takes an error of the host for a failed read and goes on, so a run
+ * past its budget finds no more files, and ends with a `TooLargeError` after.
+ */
 export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options: TscOptions = {}): Promise<TscRun> {
     const {cwd = '/', extra = new Map<string, string>(), json = false, writeToProject = false, visible = () => true, budget = Infinity} = options;
     const written = new Map<string, string>();
     const read = new Set<string>();
     const misses = new Set<string>();
     let spent = 0;
+    let tooLarge = false;
     const stdout: Uint8Array[] = [];
     const stderr: Uint8Array[] = [];
     const extraDirs = new Set<string>();
@@ -65,29 +71,35 @@ export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options:
         for (let at = path.lastIndexOf('/'); at > 0; at = path.lastIndexOf('/', at - 1)) extraDirs.add(path.slice(0, at));
     }
 
+    const bytes = (data: string | Uint8Array) => typeof data === 'string' ? encoder.encode(data) : data;
     const fs: HostFileSystem = {
         readFile(path) {
             const own = written.get(path) ?? extra.get(path);
-            if (own !== undefined) return own;
-            if (!visible(path)) return undefined;
+            if (own !== undefined) return encoder.encode(own);
+            if (tooLarge || !visible(path)) throw new NotFoundError(path);
             const data = vfs.read(path);
             if (data === undefined) {
                 if (vfs.remote.has(path)) misses.add(path);
-            } else if (!read.has(path)) {
+                throw new NotFoundError(path);
+            }
+            if (!read.has(path)) {
                 read.add(path);
                 spent += sourceCost(path, data.length);
-                if (spent > budget) throw new TooLargeError();
+                if (spent > budget) {
+                    tooLarge = true;
+                    throw new NotFoundError(path);
+                }
             }
-            return data;
+            return bytes(data);
         },
         stat(path) {
-            if (written.has(path) || extra.has(path) || (vfs.isFile(path) && visible(path))) return {isDirectory: false, mtimeMs: 0};
-            if (vfs.isDirectory(path) || extraDirs.has(path)) return {isDirectory: true, mtimeMs: 0};
-            return undefined;
+            if (written.has(path) || extra.has(path) || (vfs.isFile(path) && visible(path))) return {kind: 'f', size: 0, mtimeNs: 0n};
+            if (vfs.isDirectory(path) || extraDirs.has(path)) return {kind: 'd', size: 0, mtimeNs: 0n};
+            throw new NotFoundError(path);
         },
-        readDirectory(path) {
+        readDir(path) {
             const entries = vfs.readDirectory(path) ?? (extraDirs.has(path) ? [] : undefined);
-            if (!entries) return undefined;
+            if (!entries) throw new NotFoundError(path);
             const prefix = path === '/' ? '/' : `${path}/`;
             for (const key of extra.keys()) {
                 if (!key.startsWith(prefix)) continue;
@@ -95,7 +107,7 @@ export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options:
                 const name = rest.split('/')[0];
                 if (!entries.some(entry => entry.name === name)) entries.push({name, kind: rest.includes('/') ? 'directory' : 'file'});
             }
-            return entries;
+            return entries.map(entry => [entry.kind === 'directory' ? 'd' : entry.kind === 'file' ? 'f' : 'o', entry.name]);
         },
         realpath: path => path,
         writeFile(path, data, append) {
@@ -108,19 +120,17 @@ export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options:
             written.delete(path);
             if (writeToProject) vfs.remove(path);
         },
+        chtimes() {},
     };
 
-    const {exitCode, diagnostics} = await runTscAsync(module, {
-        args,
-        cwd,
-        fs,
-        diagnosticsJson: json,
+    const {exitCode, reply} = await runTscAsync(module, makeRequest(args, {cwd, json}), fs, {
         stdout: chunk => stdout.push(chunk),
         stderr: chunk => stderr.push(chunk),
     });
+    if (tooLarge) throw new TooLargeError();
     const text = (chunks: Uint8Array[]) => chunks.map(chunk => new TextDecoder().decode(chunk)).join('');
     const errors = text(stderr);
-    // A panic prints one line and ends the run with its exit code, as a run with diagnostics ends.
-    const crash = /^tsgo: panic.*$/m.exec(errors)?.[0];
-    return {exitCode, crash, diagnostics: diagnostics ?? [], written, read, misses, stdout: text(stdout), stderr: errors};
+    // A panic or a trap, such as a stack overflow or running out of memory, ends the run with its own exit code.
+    const crash = exitCode === EXIT_CRASHED ? errors.trim().split('\n')[0].replace(/^error:\s*/, '') || 'The compiler crashed.' : undefined;
+    return {exitCode, crash, diagnostics: json ? parseReply(reply) : [], written, read, misses, stdout: text(stdout), stderr: errors};
 }

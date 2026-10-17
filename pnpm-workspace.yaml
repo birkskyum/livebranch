@@ -12,3 +12,10 @@ minimumReleaseAgeExclude:
   - '@tsc-rs/win32-arm64@0.6.0'
   - '@tsc-rs/win32-x64@0.6.0'
   - tsc-rs@0.6.0
+  - '@tsrs/wasm@0.16.0-ts7.1.0-dev.20260929'
+  - '@tsrs/darwin-arm64@0.16.0-ts7.1.0-dev.20260929'
+  - '@tsrs/linux-arm64-gnu@0.16.0-ts7.1.0-dev.20260929'
+  - '@tsrs/linux-arm64-musl@0.16.0-ts7.1.0-dev.20260929'
+  - '@tsrs/linux-x64-gnu@0.16.0-ts7.1.0-dev.20260929'
+  - '@tsrs/linux-x64-musl@0.16.0-ts7.1.0-dev.20260929'
+  - tsrs@0.16.0-ts7.1.0-dev.20260929

@@ -162,21 +162,14 @@ test('stops at the source budget of the environment', async () => {
     await assert.rejects(run(sources - 1), TooLargeError);
 });
 
-// A stand-in for the compiler that ends as a panic of it does: one line on stderr, then proc_exit.
+// A stand-in for tsrs.wasm whose run traps, as a panic of the compiler ends.
 // (module
-//   (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
-//   (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
 //   (memory (export "memory") 1)
-//   (data (i32.const 0) "\10\00\00\00\2b\00\00\00")
-//   (data (i32.const 16) "tsgo: panic at checker.rs:1: out of bounds\n")
-//   (func (export "ts_input") (param i32) (result i32) (i32.const 1024))
-//   (func (export "ts_run") (result i32)
-//     (drop (call $fd_write (i32.const 2) (i32.const 0) (i32.const 1) (i32.const 8)))
-//     (call $proc_exit (i32.const 70))
-//     (i32.const 0))
-//   (func (export "ts_output") (result i32) (i32.const 0))
-//   (func (export "ts_output_len") (result i32) (i32.const 0)))
-const PANICKING = 'AGFzbQEAAAABFgRgAAF/YAR/f39/AX9gAX8AYAF/AX8CRgIWd2FzaV9zbmFwc2hvdF9wcmV2aWV3MQhmZF93cml0ZQABFndhc2lfc25hcHNob3RfcHJldmlldzEJcHJvY19leGl0AAIDBQQDAAAABQMBAAEHOgUGbWVtb3J5AgAIdHNfaW5wdXQAAgZ0c19ydW4AAwl0c19vdXRwdXQABA10c19vdXRwdXRfbGVuAAUKJgQFAEGACAsUAEECQQBBAUEIEAAaQcYAEAFBAAsEAEEACwQAQQALCz4CAEEACwgQAAAAKwAAAABBEAsrdHNnbzogcGFuaWMgYXQgY2hlY2tlci5yczoxOiBvdXQgb2YgYm91bmRzCg==';
+//   (func (export "tsrs_input") (param i32) (result i32) (i32.const 1024))
+//   (func (export "tsrs_run") (result i32) (unreachable))
+//   (func (export "tsrs_output") (result i32) (i32.const 0))
+//   (func (export "tsrs_output_len") (result i32) (i32.const 0)))
+const PANICKING = 'AGFzbQEAAAABCgJgAX8Bf2AAAX8DBQQAAQEBBQMBAAEHQgUGbWVtb3J5AgAKdHNyc19pbnB1dAAACHRzcnNfcnVuAAELdHNyc19vdXRwdXQAAg90c3JzX291dHB1dF9sZW4AAwoVBAUAQYAICwMAAAsEAEEACwQAQQAL';
 
 test('reports a crash of the compiler, also where the setup did not run', async () => {
     const {checkProject} = await import('./check.ts');
@@ -189,7 +182,7 @@ test('reports a crash of the compiler, also where the setup did not run', async 
         },
     }, panicking);
     const {problems} = await checkProject(project, panicking);
-    const said = 'tsgo: panic at checker.rs:1: out of bounds';
+    const said = 'tsrs.wasm trapped (RuntimeError: unreachable); a stack overflow on deeply nested code or running out of memory are the usual causes';
     assert.deepEqual(problems.map(problem => [problem.category, problem.text]), [
         ['error', `The compiler crashed, so modules are missing from this build. ${said}`],
         ['error', `The compiler crashed, so the types are not checked. ${said}`],

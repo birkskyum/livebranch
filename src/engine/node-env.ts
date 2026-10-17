@@ -14,7 +14,7 @@ export function nodeEnv(runtimeBase = 'https://livebranch.invalid/', request: Fe
         git: {resolve: (owner, repo, ref) => resolveRef(request, owner, repo, ref), tree: (owner, repo, commit) => listTree(request, owner, repo, commit)},
         runtimeBase,
         wasm() {
-            module ??= readFile(new URL('../../public/tsc/ts_rust.wasm', import.meta.url)).then(bytes => WebAssembly.compile(bytes));
+            module ??= readFile(new URL(import.meta.resolve('@tsrs/wasm/tsrs.wasm'))).then(bytes => WebAssembly.compile(bytes));
             return module;
         },
     };
