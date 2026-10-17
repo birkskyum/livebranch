@@ -7,7 +7,6 @@ import {Button} from '@/components/ui/button.tsx';
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@/components/ui/resizable.tsx';
 import {Separator} from '@/components/ui/separator.tsx';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs.tsx';
-import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip.tsx';
 import {cn} from '@/lib/utils.ts';
 import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {CodePanel} from './CodePanel.tsx';
@@ -15,6 +14,7 @@ import {Preview} from './Preview.tsx';
 import {refLabel} from './RefLinks.tsx';
 import {Share} from './Share.tsx';
 import {Terminal} from './Terminal.tsx';
+import {Tip} from './Tip.tsx';
 import {REPOSITORY, allProblems, setState, setView, useStore, type ConsoleEntry, type State, type Tab} from './store.ts';
 
 /** A header button that shows whether its part of the workbench is open. */
@@ -43,14 +43,11 @@ function Status() {
 /** A header button that shows or hides a part of the workbench, drawn as that part of the layout. */
 function Toggle(props: {label: string; pressed: boolean; onClick(): void; children: ReactNode}) {
     return (
-        <Tooltip>
-            <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon-sm" className={cn(toggle, 'relative')} aria-pressed={props.pressed} aria-label={props.label} onClick={props.onClick}>
-                    {props.children}
-                </Button>
-            </TooltipTrigger>
-            <TooltipContent>{props.label}</TooltipContent>
-        </Tooltip>
+        <Tip text={props.label}>
+            <Button variant="ghost" size="icon-sm" className={cn(toggle, 'relative')} aria-pressed={props.pressed} aria-label={props.label} onClick={props.onClick}>
+                {props.children}
+            </Button>
+        </Tip>
     );
 }
 
@@ -75,9 +72,11 @@ function Header() {
             <a className="font-semibold" href="#">livebranch</a>
             {repository
                 ? (
-                    <a className="truncate font-mono text-xs text-muted-foreground hover:underline" href={`https://github.com/${repository.owner}/${repository.repo}`} target="_blank" rel="noreferrer" title="The repository on GitHub">
-                        {repository.owner}/{repository.repo}
-                    </a>
+                    <Tip text="The repository on GitHub">
+                        <a className="truncate font-mono text-xs text-muted-foreground hover:underline" href={`https://github.com/${repository.owner}/${repository.repo}`} target="_blank" rel="noreferrer">
+                            {repository.owner}/{repository.repo}
+                        </a>
+                    </Tip>
                 )
                 : label && <span className="truncate font-mono text-xs text-muted-foreground">{label}</span>}
             <Status />
@@ -89,9 +88,11 @@ function Header() {
                 </Toggle>
                 <Separator orientation="vertical" className="mx-1 h-4 self-center" />
                 {opened && <Share />}
-                <Button variant="ghost" size="icon-sm" asChild>
-                    <a href={REPOSITORY} target="_blank" rel="noreferrer" title="livebranch on GitHub" aria-label="livebranch on GitHub"><MarkGithubIcon /></a>
-                </Button>
+                <Tip text="livebranch on GitHub">
+                    <Button variant="ghost" size="icon-sm" asChild>
+                        <a href={REPOSITORY} target="_blank" rel="noreferrer" aria-label="livebranch on GitHub"><MarkGithubIcon /></a>
+                    </Button>
+                </Tip>
             </div>
         </header>
     );

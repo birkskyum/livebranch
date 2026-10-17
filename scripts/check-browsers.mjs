@@ -6,9 +6,10 @@
 // preview. The files start 192 pixels wide and keep their width when the code panel is made wider.
 // The address asks for input to be mirrored, in its fragment, which has to survive the redirect.
 // Mirrored, a drag on the map of the pull request has to move the map of main the same way, and
-// once the bar turns mirroring off, not at all. The icon of
-// the panel has to count an error of the console. Shared at the commits as previews
-// alone, the link has to name both commits, and the demo has to copy as a block for a pull request.
+// once the bar turns mirroring off, not at all. The icon of the panel has to count an error of the
+// console, and the bar's buttons have to say on hover what they do. Shared at the commits as
+// previews alone, the link has to name both commits, and the demo has to copy as a block for a
+// pull request.
 // Each ref has to be named once, in the bar over its own preview, which lines up with it. The
 // comparison is stopped from that bar.
 // A commit that is opened by its hash has to say which branch it is the head of. Its build is then
@@ -50,7 +51,7 @@ const pages = {
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628#mirror=1`,
-        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.mirrors && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
+        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.tip === 'Reload both' && found.mirrors && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.getByRole('tab', {name: /^Console/}).click();
             await page.evaluate(() => document.querySelectorAll('iframe').forEach((frame, index) => frame.contentWindow.console.log(`side ${index}`)));
@@ -65,6 +66,9 @@ const pages = {
             const aligned = await consoles.evaluateAll(lineUp);
             const bars = await page.locator('[data-side]').evaluateAll(lineUp);
             const badge = await page.getByRole('button', {name: 'Panel, 1 error'}).count();
+            await page.getByRole('button', {name: 'Reload both'}).hover();
+            const tip = await page.getByRole('tooltip').innerText({timeout: 3000}).catch(() => '');
+            await page.mouse.move(0, 0);
             // The demo keeps its camera in the address of its page. With input mirrored, a drag on the
             // pull request's map moves main's the same way. Without, main's stays where it is.
             const cameras = () => page.evaluate(() => [...document.querySelectorAll('iframe')].map(frame => frame.contentWindow.location.hash));
@@ -117,7 +121,7 @@ const pages = {
             }, error => String(error).split('\n')[0]);
             await page.getByRole('button', {name: 'Stop comparing'}).click();
             await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
-            return {sides: logged.join('|'), aligned, bars, badge, mirrors, shared, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+            return {sides: logged.join('|'), aligned, bars, badge, tip, mirrors, shared, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'commit at the head of a branch': {

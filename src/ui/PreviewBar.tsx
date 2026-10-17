@@ -7,6 +7,7 @@ import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover.t
 import {cn} from '@/lib/utils.ts';
 import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {RefLinks} from './RefLinks.tsx';
+import {Tip} from './Tip.tsx';
 import {compareWith, defaultBranch, setMirror, setState, useStore} from './store.ts';
 
 interface Target {
@@ -42,9 +43,11 @@ function useTargets(): Target[] {
 /** A small button of the bar. */
 function BarButton(props: {label: string; onClick(): void; children: ReactNode}) {
     return (
-        <Button variant="ghost" size="icon-xs" className="text-muted-foreground" title={props.label} aria-label={props.label} onClick={props.onClick}>
-            {props.children}
-        </Button>
+        <Tip text={props.label}>
+            <Button variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label={props.label} onClick={props.onClick}>
+                {props.children}
+            </Button>
+        </Tip>
     );
 }
 
@@ -114,15 +117,19 @@ export function PreviewBar() {
                 <div className={side} data-side="base">
                     <RefLinks gh={against} session={compared} name={text => <RefPicker label="Change the ref to compare with" trigger={<>{text || spec.base}<ChevronDown /></>} />} />
                     {!compared && (
-                        <span className={cn('truncate font-sans', baseError ? 'text-destructive' : 'text-muted-foreground')} title={baseError || undefined}>
-                            {baseError || 'building…'}
-                        </span>
+                        <Tip text={baseError || `${spec.base} builds for the comparison`}>
+                            <span className={cn('truncate font-sans', baseError ? 'text-destructive' : 'text-muted-foreground')}>
+                                {baseError || 'building…'}
+                            </span>
+                        </Tip>
                     )}
                     <span className="flex-1" />
                     {goesInto && (
-                        <Button variant="ghost" size="xs" className="font-sans" title={`This pull request goes into ${goesInto}, not into ${spec.base}.`} onClick={() => void compareWith(goesInto)}>
-                            Goes into {goesInto}
-                        </Button>
+                        <Tip text={`This pull request goes into ${goesInto}, not into ${spec.base}. Compare with ${goesInto}.`}>
+                            <Button variant="ghost" size="xs" className="font-sans" onClick={() => void compareWith(goesInto)}>
+                                Goes into {goesInto}
+                            </Button>
+                        </Tip>
                     )}
                     <BarButton label="Stop comparing" onClick={() => void compareWith('')}><X /></BarButton>
                 </div>
@@ -138,16 +145,17 @@ export function PreviewBar() {
                     )
                     : <RefPicker label="Compare with another ref" trigger={<span className="flex items-center gap-1 font-sans"><ArrowLeftRight />Compare with…</span>} />)}
                 {against !== undefined && (
-                    <Button
-                        variant="ghost"
-                        size="xs"
-                        className="font-sans text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
-                        aria-pressed={mirror}
-                        title="Input on one side goes to the other too. Each handles it with its own code, so a gesture can end up differently."
-                        onClick={() => setMirror(!mirror)}
-                    >
-                        <MousePointer2 />Mirror input
-                    </Button>
+                    <Tip text="Input on one side goes to the other too. Each handles it with its own code, so a gesture can end up differently.">
+                        <Button
+                            variant="ghost"
+                            size="xs"
+                            className="font-sans text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+                            aria-pressed={mirror}
+                            onClick={() => setMirror(!mirror)}
+                        >
+                            <MousePointer2 />Mirror input
+                        </Button>
+                    </Tip>
                 )}
                 {reload}
             </div>
