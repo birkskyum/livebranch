@@ -37,7 +37,7 @@ export function Landing() {
             <header className="flex flex-col gap-2">
                 <h1 className="text-2xl font-semibold tracking-tight">livebranch</h1>
                 <p className="text-muted-foreground">
-                    Runs a TypeScript project in the browser. The TypeScript compiler (tsc-rs, as WebAssembly) compiles the
+                    Runs a TypeScript project in the browser. The TypeScript compiler (tsrs, as WebAssembly) compiles the
                     sources here, straight from a GitHub commit, and the page loads the result. A link holds everything, so
                     there is no account and no server.
                 </p>

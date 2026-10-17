@@ -35,7 +35,7 @@ async function preload(project: Project, sources: Iterable<string>, cwd: string)
 
 /**
  * Runs a project script the way `node script.ts` would. The script and what it imports are
- * compiled with tsc-rs and run in a worker whose `fs` is the project. Files that the script writes
+ * compiled with tsrs and run in a worker whose `fs` is the project. Files that the script writes
  * go back into the project.
  */
 export async function runNodeScript(project: Project, env: Env, script: string, args: string[], cwd: string, io: ScriptIo): Promise<number> {

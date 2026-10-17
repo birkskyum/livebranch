@@ -208,7 +208,7 @@ function asWritten(specifier: string, source: string): string {
 }
 
 /**
- * Compiles the entries and everything they import with tsc-rs, without type checking, and makes
+ * Compiles the entries and everything they import with tsrs, without type checking, and makes
  * the output loadable as native modules. A compiled module is served at the path of its source.
  */
 export async function compile(project: Project, env: Env, entries: string[], progress: Progress = () => {}, keep?: Set<string>): Promise<Compiled> {

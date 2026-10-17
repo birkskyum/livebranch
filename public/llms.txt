@@ -1,6 +1,6 @@
 # livebranch
 
-> livebranch.dev runs a TypeScript project in the browser, straight from a GitHub branch, pull request or commit. The TypeScript compiler (tsc-rs, as WebAssembly) compiles the sources in the visitor's tab, so there is no server build, no account and nothing to install. A link holds everything.
+> livebranch.dev runs a TypeScript project in the browser, straight from a GitHub branch, pull request or commit. The TypeScript compiler (tsrs, as WebAssembly) compiles the sources in the visitor's tab, so there is no server build, no account and nothing to install. A link holds everything.
 
 Use it to show someone a running branch or pull request of a TypeScript library, with a demo, and to compare it with another ref side by side.
 

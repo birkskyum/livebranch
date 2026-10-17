@@ -1,7 +1,7 @@
 # livebranch
 
 A playground that runs a TypeScript project in the browser, straight from a GitHub commit. The
-TypeScript compiler itself ([tsc-rs](https://github.com/pingdotgg/ts-rust), compiled to WebAssembly)
+TypeScript compiler itself ([tsrs](https://github.com/oxc-project/tsrs), compiled to WebAssembly)
 compiles the sources in the tab, and the page loads the result as native ES modules. There is no
 bundler, no container and no server. A link holds everything needed to run it.
 
@@ -78,11 +78,11 @@ import of the project's own package name resolves to `src/index.ts`.
    packages load from esm.sh. A package that a script imports by names it computes, as
    maplibre-gl-js's Unicode generator does with hundreds of files, comes from npm as one tarball
    instead, and its modules are served with the build.
-3. tsc-rs compiles the page's scripts and everything they import at run time, without type
+3. tsrs compiles the page's scripts and everything they import at run time, without type
    checking. For maplibre-gl-js that is about 390 modules in under a second.
 4. Imports in the output are rewritten to the paths of their sources and to CDN URLs, and a
    service worker serves the result from the Cache API under `~p/<build id>/`.
-5. In the background, tsc-rs type checks the page and the link's files against the project and
+5. In the background, tsrs type checks the page and the link's files against the project and
    the type declarations of its npm dependencies. The problems show up under the preview.
 
 A build is kept in the browser by a hash of its inputs. Opening the same link again takes a few
@@ -119,7 +119,7 @@ array of lines.
 ## Terminal
 
 The Terminal tab is a bash over the project's files ([just-bash](https://github.com/vercel-labs/just-bash)).
-`tsc` there is tsc-rs with its full command line, `node` runs a script as the setup commands do,
+`tsc` there is tsrs with its full command line, `node` runs a script as the setup commands do,
 and `npm run` runs a script of package.json through the same shell.
 
 ## Command line
@@ -249,17 +249,17 @@ it went.
 pnpm install
 pnpm dev            # the app, with the engine in a worker
 pnpm test           # the engine under Node
-pnpm check:types    # with tsc-rs
+pnpm check:types    # with tsrs
 pnpm check:browsers # the live site in Firefox, WebKit and Chromium (needs Playwright's browsers)
 pnpm build          # static files in dist, for any host that serves over HTTPS
 pnpm exec wrangler dev   # the built app and the API in a local workerd
 ```
 
-`public/tsc/ts_rust.wasm` is built from ts-rust at the commit that `scripts/build-wasm.sh` pins
-(v0.6.0), with the fix in `scripts/ts-rust.patch`. The script needs Rust with the `wasm32-wasip1`
-target. The module here is the faster of ts-rust's two builds, without wasm-opt (7.7 MB, 2.1 MB
-with Brotli). Its smallest build is 1.5 MB smaller and takes 1.7 times as long to type check
-maplibre-gl-js.
+The compiler is the WebAssembly module of the npm package `@tsrs/wasm` (9.9 MB, 1.9 MB with
+Brotli), pinned to one version, as tsrs releases every few days. It replaced tsc-rs, which it beat
+by about 1.55 times in a tab on maplibre-gl-js, compiling and type checking, with 42% less memory
+for it and the same JavaScript out. In the Worker it checked zod in 4 seconds, where tsc-rs took 12
+and then ran out of resources.
 
 ## Limits
 
@@ -275,5 +275,6 @@ maplibre-gl-js.
   host without CORS, needs its output listed under `prebuilt`.
 - Packages from the CDN are bundled per package, so two copies of a shared dependency can load.
 - A script's own `import()` of a computed project path is not compiled unless `entries` names it.
-- tsc-rs is new, and its authors say so. The emit here matched byte for byte with and without the
-  default libs on maplibre-gl-js, which is the only large project tried so far.
+- tsrs is a few weeks old and takes no issues yet. Its emit matched tsc-rs's byte for byte on the
+  635 files of maplibre-gl-js, which is the only large project tried so far. Its module reserves an
+  80 MiB stack, so even a small check takes about 115 MiB of a Worker's memory.
