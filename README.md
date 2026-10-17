@@ -166,10 +166,11 @@ minute to the link and check endpoints, and 300 to the GitHub reader.
 Setup commands do not run in the Worker or under Node yet. A project that has them is still
 checked, but problems are then reported only for the page and the link's files.
 
-The Worker checks a program of up to 1.4 MB of source (`SOURCE_BUDGET` in `worker/index.ts`), where
+The Worker checks a program of up to 1.8 MB of source (`SOURCE_BUDGET` in `worker/index.ts`), where
 a declaration file counts for a quarter of its size. A larger one gets status 422 right away,
-because the compiler would need more memory than a Worker has: about 200 MB for maplibre-gl-js.
-The command line and a browser have no such limit.
+because the compiler would need more memory than a Worker has. It ran out at 2.1 MB of the Angular
+compiler. A smaller program that still runs out of memory gets status 422 too. The command line and
+a browser have no such limit.
 
 ## Pictures in pull requests
 

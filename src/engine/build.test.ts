@@ -162,6 +162,16 @@ test('stops at the source budget of the environment', async () => {
     await assert.rejects(run(sources - 1), TooLargeError);
 });
 
+test('takes a run that had no memory left to write for one that is too large', async () => {
+    const {TooLargeError, tsc} = await import('./tsc.ts');
+    const project = await openProject({files: {'main.ts': 'console.log(1);\n'}}, env);
+    // Out of memory, V8 makes no buffer for the output, and tsrs reports the write as failed.
+    project.vfs.write = () => {
+        throw new RangeError('Invalid array buffer length');
+    };
+    await assert.rejects(tsc(await env.wasm(), project.vfs, ['--outDir', '/out', '/main.ts'], {json: true, writeToProject: true}), TooLargeError);
+});
+
 // A stand-in for tsrs.wasm whose run traps, as a panic of the compiler ends.
 // (module
 //   (memory (export "memory") 1)

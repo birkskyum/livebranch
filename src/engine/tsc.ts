@@ -51,11 +51,14 @@ export function sourceCost(path: string, length: number): number {
 
 const fileDecoder = new TextDecoder('utf-8', {ignoreBOM: true});
 const encoder = new TextEncoder();
+/** What V8 says when it has no memory left for a buffer. */
+const OUT_OF_MEMORY = /Invalid array buffer length|Array buffer allocation failed/;
 
 /**
  * Runs tsrs once over the project's files. The compiler cannot wait for a fetch, so a file that is
  * not loaded is a miss. tsrs takes an error of the host for a failed read and goes on, so a run
- * past its budget finds no more files, and ends with a `TooLargeError` after.
+ * past its budget finds no more files, and ends with a `TooLargeError` after. So does a run that
+ * had no memory left to write its output.
  */
 export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options: TscOptions = {}): Promise<TscRun> {
     const {cwd = '/', extra = new Map<string, string>(), json = false, writeToProject = false, visible = () => true, budget = Infinity} = options;
@@ -128,9 +131,12 @@ export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options:
         stderr: chunk => stderr.push(chunk),
     });
     if (tooLarge) throw new TooLargeError();
+    const diagnostics = json ? parseReply(reply) : [];
+    // tsrs reports each failed write and goes on, so a run out of memory would report hundreds.
+    if (diagnostics.some(diagnostic => OUT_OF_MEMORY.test(diagnostic.text))) throw new TooLargeError();
     const text = (chunks: Uint8Array[]) => chunks.map(chunk => new TextDecoder().decode(chunk)).join('');
     const errors = text(stderr);
     // A panic or a trap, such as a stack overflow or running out of memory, ends the run with its own exit code.
     const crash = exitCode === EXIT_CRASHED ? errors.trim().split('\n')[0].replace(/^error:\s*/, '') || 'The compiler crashed.' : undefined;
-    return {exitCode, crash, diagnostics: json ? parseReply(reply) : [], written, read, misses, stdout: text(stdout), stderr: errors};
+    return {exitCode, crash, diagnostics, written, read, misses, stdout: text(stdout), stderr: errors};
 }

@@ -26,12 +26,11 @@ interface Env {
 
 const MAX_BODY_BYTES = 1_000_000;
 /**
- * The most source that a check compiles here, in characters. A Worker has little memory. Checks
- * for which the compiler took 120 to 135 MB went through: maplibre-style-spec with the types of
- * its dependencies, and 0.9 MB of dense code, which is about what a request body can hold.
- * maplibre-gl-js, with 2.8 MB of source and 200 MB, ran for 30 seconds and then failed.
+ * The most source that a check compiles here, in characters. A Worker has 128 MB. tsrs ran out of
+ * it on 2.1 MB of the Angular compiler and 2.2 MB of three.js, and parts of them with 1.7 MB and
+ * 2.0 MB went through. A program that runs out of memory below this is too large as well.
  */
-const SOURCE_BUDGET = 1_400_000;
+const SOURCE_BUDGET = 1_800_000;
 const CORS = {
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'authorization, content-type',
