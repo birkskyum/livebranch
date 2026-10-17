@@ -171,6 +171,63 @@ a declaration file counts for a quarter of its size. A larger one gets status 42
 because the compiler would need more memory than a Worker has: about 200 MB for maplibre-gl-js.
 The command line and a browser have no such limit.
 
+## Pictures in pull requests
+
+Two workflows put a picture of the base and of the pull request into a comment on it, taken on
+livebranch.dev after the gesture that a livebranch link in the description recorded. Reviewers see
+how each side ends up without opening anything. The first takes the pictures without any token, as
+the pull request may come from a fork. The second runs after it from the default branch, stores
+the pictures on livebranch.dev with the run's OIDC token and keeps one comment up to date. It takes
+only the pictures and the lines that the pages logged from the first, and checks that the pull
+request has the commit they show.
+
+```yaml
+# .github/workflows/livebranch-pictures.yml
+name: livebranch pictures
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+permissions: {}
+jobs:
+  pictures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: birkskyum/livebranch/actions/shots@main
+      - uses: actions/upload-artifact@v7
+        with:
+          name: livebranch-pictures
+          path: livebranch-shots
+```
+
+```yaml
+# .github/workflows/livebranch-comment.yml
+name: livebranch comment
+on:
+  workflow_run:
+    workflows: [livebranch pictures]
+    types: [completed]
+permissions:
+  actions: read
+  pull-requests: write
+  id-token: write
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: livebranch-pictures
+          path: livebranch-shots
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - uses: birkskyum/livebranch/actions/comment@main
+```
+
+livebranch.dev stores pictures for the accounts in `PICTURE_OWNERS` of `wrangler.jsonc`.
+`node actions/shots/shots.ts --event event.json --channel chrome` takes the pictures of a saved
+`pull_request` event on this machine, with a comment.md to look at.
+
 ## For agents and tests
 
 A link can be made without a browser and without an account. `/api/check` and `livebranch check` answer

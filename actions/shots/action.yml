@@ -1,0 +1,22 @@
+name: livebranch pictures
+description: Takes a picture of the base and the head of a pull request on livebranch.dev, running the demo of its description, after the gesture that a livebranch link in it recorded.
+inputs:
+  site:
+    description: The livebranch site.
+    default: https://livebranch.dev/
+  out:
+    description: Where base.png, head.png, summary.json and comment.md go.
+    default: livebranch-shots
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+    - name: Install Playwright's Chromium
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+    - name: Take the pictures
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/shots.ts" --site "${{ inputs.site }}" --out "${{ inputs.out }}"

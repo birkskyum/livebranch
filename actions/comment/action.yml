@@ -1,0 +1,23 @@
+name: livebranch comment
+description: Posts the pictures of the livebranch pictures action as one comment on the pull request, and keeps it up to date. The pictures are stored on livebranch.dev for this run.
+inputs:
+  dir:
+    description: Where the pictures action wrote base.png, head.png and summary.json.
+    default: livebranch-shots
+  site:
+    description: The livebranch site.
+    default: https://livebranch.dev/
+  token:
+    description: A token that may write to pull requests.
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+    - name: Post the pictures
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: node "$GITHUB_ACTION_PATH/comment.ts" --dir "${{ inputs.dir }}" --site "${{ inputs.site }}"

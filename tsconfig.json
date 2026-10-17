@@ -29,6 +29,7 @@
         "src",
         "bin",
         "worker",
+        "actions",
         "vite.config.ts"
     ]
 }
