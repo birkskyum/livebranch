@@ -52,7 +52,10 @@ export interface ProjectConfig {
  */
 export interface Prebuilt {
     files: string[];
-    /** The generator's sources. When they differ from the release's, the files may be out of date. */
+    /**
+     * The generator's sources. When they differ from the release's, the files may be out of date. A
+     * project that has none of them is a version from before the generator, and gets no files.
+     */
     inputs?: string[];
     /**
      * The command that makes the files. It runs after the setup commands when an input differs from

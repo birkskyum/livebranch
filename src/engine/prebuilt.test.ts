@@ -14,12 +14,13 @@ const release = nodeEnv('https://app.test/', async url => {
     return new Response('', {status: 404});
 });
 
-function project(generator: string, command?: string) {
+/** A project at version 1.0.0 of `lib`. Without a generator it is an older version, from before the generator. */
+function project(generator: string | undefined, command?: string) {
     const config = {prebuilt: [{files: ['src/data.g.ts'], inputs: ['build/generate.ts'], ...command ? {command} : {}}]};
     return openProject({
         files: {
             'demo.ts': 'import {generated} from \'./src/data.g.ts\';\nconsole.log(generated);\n',
-            'build/generate.ts': generator,
+            ...generator === undefined ? {} : {'build/generate.ts': generator},
             'package.json': '{"name": "lib", "version": "1.0.0"}',
             'livebranch.json': JSON.stringify(config),
         },
@@ -54,4 +55,11 @@ test('warns about a changed generator that has no command', async () => {
     assert.deepEqual(result.stale, []);
     assert.equal(result.problems.length, 1);
     assert.equal(opened.vfs.readText('/src/data.g.ts'), GENERATED);
+});
+
+test('skips prebuilt files whose generator the project does not have', async () => {
+    const opened = await project(undefined, 'node build/generate.ts');
+    const result = await fetchPrebuilt(opened, release);
+    assert.deepEqual(result, {problems: [], stale: []});
+    assert.equal(opened.vfs.isFile('/src/data.g.ts'), false);
 });

@@ -25,14 +25,17 @@ export interface PrebuiltResult {
 /**
  * Writes the project's prebuilt files from its published npm package. A generator source of the
  * project that differs from the release's may make the files out of date. Their command then makes
- * them, or else a warning says so.
+ * them, or else a warning says so. A project that has none of a group's generator sources gets
+ * none of its files.
  */
 export async function fetchPrebuilt(project: Project, env: Env): Promise<PrebuiltResult> {
     const {vfs, packageJson, config} = project;
     const problems: Problem[] = [];
     const stale: Stale[] = [];
     const name: string | undefined = packageJson.name;
-    const wanted = (config.prebuilt ?? []).filter(group => group.files.some(file => !vfs.isFile(`/${file}`)));
+    // A project without the generator of a group is a version from before it, which needs none of its files.
+    const wanted = (config.prebuilt ?? []).filter(group => group.files.some(file => !vfs.isFile(`/${file}`))
+        && (!group.inputs?.length || group.inputs.some(input => vfs.isFile(`/${input}`))));
     if (!wanted.length) return {problems, stale};
     if (!name && wanted.some(group => !group.command)) throw new Error('The config names prebuilt files, but the project has no package name to take them from.');
 

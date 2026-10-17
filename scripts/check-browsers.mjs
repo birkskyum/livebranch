@@ -15,7 +15,8 @@
 // A commit that is opened by its hash has to say which branch it is the head of. Its build is then
 // reused for the branch, which has to keep its own name.
 // The last page stands in for GitHub's answer about the pull request, to give its description a demo.
-// The small page is edited after its type check, and has to build again with the edit.
+// The small page is edited after its type check, and has to build again with the edit. A release of
+// maplibre-gl-js from before version 6 has to come up clean too.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
 //   site     the site to check, https://livebranch.dev/ by default
@@ -49,6 +50,8 @@ const pages = {
         },
     },
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
+    // Before version 6 maplibre-gl-js starts its worker as a classic script, and has no Unicode generator.
+    'maplibre release before 6': {url: `${site}#gh=maplibre/maplibre-gl-js@v5.0.0`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628#mirror=1`,
         ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.tip === 'Reload both' && found.mirrors && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
