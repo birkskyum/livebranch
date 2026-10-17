@@ -242,6 +242,8 @@ export async function compile(project: Project, env: Env, entries: string[], pro
             await vfs.load(run.misses);
             run = await tsc(module, vfs, ['-p', TSCONFIG], options);
         }
+        // Memory in a Worker comes and goes, and a run that misses files is run again, so only the last one counts.
+        if (run.outOfMemory) throw new TooLargeError();
 
         problems.length = 0;
         modules.clear();

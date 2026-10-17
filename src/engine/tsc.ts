@@ -8,6 +8,8 @@ export interface TscRun {
     exitCode: number;
     /** What the compiler printed when it gave up in the middle of the run. What it wrote and reported is then not all. */
     crash: string | undefined;
+    /** Some output found no memory to be written in, so what the compiler wrote is not all. Known only with `json`. */
+    outOfMemory: boolean;
     diagnostics: Diagnostic[];
     /** Files that the compiler wrote. */
     written: Map<string, string>;
@@ -57,8 +59,7 @@ const OUT_OF_MEMORY = /Invalid array buffer length|Array buffer allocation faile
 /**
  * Runs tsrs once over the project's files. The compiler cannot wait for a fetch, so a file that is
  * not loaded is a miss. tsrs takes an error of the host for a failed read and goes on, so a run
- * past its budget finds no more files, and ends with a `TooLargeError` after. So does a run that
- * had no memory left to write its output.
+ * past its budget finds no more files, and ends with a `TooLargeError` after.
  */
 export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options: TscOptions = {}): Promise<TscRun> {
     const {cwd = '/', extra = new Map<string, string>(), json = false, writeToProject = false, visible = () => true, budget = Infinity} = options;
@@ -132,11 +133,11 @@ export async function tsc(module: WasmModule, vfs: Vfs, args: string[], options:
     });
     if (tooLarge) throw new TooLargeError();
     const diagnostics = json ? parseReply(reply) : [];
-    // tsrs reports each failed write and goes on, so a run out of memory would report hundreds.
-    if (diagnostics.some(diagnostic => OUT_OF_MEMORY.test(diagnostic.text))) throw new TooLargeError();
+    // tsrs reports each failed write as a diagnostic and goes on.
+    const outOfMemory = diagnostics.some(diagnostic => OUT_OF_MEMORY.test(diagnostic.text));
     const text = (chunks: Uint8Array[]) => chunks.map(chunk => new TextDecoder().decode(chunk)).join('');
     const errors = text(stderr);
     // A panic or a trap, such as a stack overflow or running out of memory, ends the run with its own exit code.
     const crash = exitCode === EXIT_CRASHED ? errors.trim().split('\n')[0].replace(/^error:\s*/, '') || 'The compiler crashed.' : undefined;
-    return {exitCode, crash, diagnostics, written, read, misses, stdout: text(stdout), stderr: errors};
+    return {exitCode, crash, outOfMemory, diagnostics, written, read, misses, stdout: text(stdout), stderr: errors};
 }
