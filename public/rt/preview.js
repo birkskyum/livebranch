@@ -1,5 +1,5 @@
 // Runs first in the preview page. Reports its console output and uncaught errors to the app, and
-// carries the views that a comparison keeps the same.
+// mirrors input between the pages of a comparison.
 (() => {
     // WebKit loads the imports of a module worker through the service worker only for the first of
     // several workers that start at the same moment from one URL. The others fail to load. A
@@ -64,32 +64,74 @@
     window.addEventListener('unhandledrejection', event => send('error', [event.reason]));
     window.addEventListener('load', () => window.parent.postMessage({livebranch: 'load', title: document.title}, '*'));
 
-    // Keeps the views of a comparison the same, such as the cameras of two maps. A library's adapter
-    // says how its views are shown and offers the ones that input gives them. The app carries each
-    // view to the same thing on the other side, the first map to the first map.
-    const followers = [];
-    let following = false;
-    window.livebranch = {
-        sync: {
-            /** Says how the next thing on the page shows a view, and returns its number. */
-            follow(show) {
-                followers.push(show);
-                window.parent.postMessage({livebranch: 'follow', index: followers.length - 1}, '*');
-                return followers.length - 1;
-            },
-            /** Offers a view of a thing to the other side. A view that came from there is not sent back. */
-            publish(index, view) {
-                if (!following) window.parent.postMessage({livebranch: 'view', index, view}, '*');
-            },
-        },
-    };
+    // Mirrors input between the pages of a comparison. Input that a person gives this page goes to
+    // the app, which gives it to the other page when mirroring is on. There it arrives again, at the
+    // same place and as the same events, and that page's own code handles it, so that the two can
+    // end up apart. The pages are as large as each other, so a place in one is the same in the other.
+    const MIRRORED = [
+        'pointerdown', 'pointermove', 'pointerup', 'pointercancel',
+        'mousedown', 'mousemove', 'mouseup', 'mouseover', 'mouseout', 'click', 'dblclick', 'contextmenu',
+        'wheel', 'keydown', 'keyup', 'touchstart', 'touchmove', 'touchend', 'touchcancel',
+    ];
+    const FIELDS = [
+        'clientX', 'clientY', 'screenX', 'screenY', 'movementX', 'movementY', 'button', 'buttons', 'detail',
+        'ctrlKey', 'shiftKey', 'altKey', 'metaKey', 'deltaX', 'deltaY', 'deltaZ', 'deltaMode',
+        'key', 'code', 'location', 'repeat', 'pointerId', 'pointerType', 'isPrimary', 'width', 'height', 'pressure', 'tiltX', 'tiltY',
+    ];
+    // A subclass before its parent: a wheel event is a mouse event too.
+    const KINDS = ['WheelEvent', 'PointerEvent', 'MouseEvent', 'KeyboardEvent', 'TouchEvent'].filter(name => name in window);
+    const touches = list => [...list].map(({identifier, clientX, clientY, screenX, screenY}) => ({identifier, clientX, clientY, screenX, screenY}));
+    for (const type of MIRRORED) {
+        window.addEventListener(type, event => {
+            // Input that this page was given from the other one is not sent back.
+            if (!event.isTrusted) return;
+            const kind = KINDS.find(name => event instanceof window[name]);
+            if (!kind) return;
+            const init = {};
+            for (const field of FIELDS) if (field in event) init[field] = event[field];
+            if (kind === 'TouchEvent') Object.assign(init, {touches: touches(event.touches), targetTouches: touches(event.targetTouches), changedTouches: touches(event.changedTouches)});
+            window.parent.postMessage({livebranch: 'input', kind, type, init}, '*');
+        }, {capture: true, passive: true});
+    }
+
+    // Keys go to what a click there would have focused. Focusing it would take the focus from the
+    // page that the person is using.
+    let focused = document.body;
+    // A pointer that a mirrored event captured goes on to the element that captured it, as the
+    // browser does for a real one, which it cannot capture.
+    const captured = new Map();
+    let mirroring = false;
+    for (const name of ['setPointerCapture', 'releasePointerCapture']) {
+        const original = Element.prototype[name];
+        Element.prototype[name] = function (pointerId) {
+            if (!mirroring) return original.call(this, pointerId);
+            if (name === 'setPointerCapture') captured.set(pointerId, this);
+            else captured.delete(pointerId);
+        };
+    }
+    const FOCUSABLE = '[tabindex], a[href], button, input, select, textarea, [contenteditable]';
     window.addEventListener('message', event => {
-        if (event.source !== window.parent || event.data?.livebranch !== 'view') return;
-        following = true;
+        if (event.source !== window.parent || event.data?.livebranch !== 'input') return;
+        const {kind, type, init} = event.data;
+        if (!KINDS.includes(kind)) return;
+        const point = kind === 'TouchEvent' ? init.changedTouches[0] : init;
+        let target;
+        if (kind === 'KeyboardEvent') target = focused.isConnected ? focused : document.body;
+        else if (kind === 'PointerEvent' && captured.has(init.pointerId)) target = captured.get(init.pointerId);
+        else target = (point && document.elementFromPoint(point.clientX, point.clientY)) ?? document.documentElement;
+        if (type === 'mousedown' || type === 'pointerdown' || type === 'touchstart') focused = target.closest(FOCUSABLE) ?? document.body;
+        mirroring = true;
         try {
-            followers[event.data.index]?.(event.data.view);
+            if (kind === 'TouchEvent') {
+                const touch = item => new Touch({...item, target});
+                Object.assign(init, {touches: init.touches.map(touch), targetTouches: init.targetTouches.map(touch), changedTouches: init.changedTouches.map(touch)});
+            }
+            target.dispatchEvent(new window[kind](type, {...init, bubbles: true, cancelable: true, composed: true, view: window}));
+        } catch {
+            // An event that this browser cannot make, such as a touch where there is no touch screen.
         } finally {
-            following = false;
+            mirroring = false;
         }
+        if (type === 'pointerup' || type === 'pointercancel') captured.delete(init.pointerId);
     });
 })();

@@ -36,24 +36,17 @@ function Frame(props: {session: SessionInfo; gh: string | undefined; labelled: b
 export function Preview() {
     const head = useRef<HTMLIFrameElement>(null);
     const base = useRef<HTMLIFrameElement>(null);
-    const {session, baseSession, baseError, spec, step, runs, syncViews} = useStore(useShallow(state => ({
+    const {session, baseSession, baseError, spec, step} = useStore(useShallow(state => ({
         session: state.session,
         baseSession: state.base,
         baseError: state.baseError,
         spec: state.spec,
         step: state.step,
-        runs: state.runs,
-        syncViews: state.syncViews,
     })));
     const comparing = baseSource(spec) !== undefined;
-    const frames = {base, head};
-    // The view that each thing of a side last offered, and the things of a side that can show one.
-    // A page that loads after the other side moved is given that view.
-    const views = useRef({base: new Map<number, unknown>(), head: new Map<number, unknown>()});
-    const able = useRef({base: new Set<number>(), head: new Set<number>()});
-    const show = (side: Side, index: number, view: unknown) => frames[side].current?.contentWindow?.postMessage({livebranch: 'view', index, view}, '*');
 
     useEffect(() => {
+        const frames = {base, head};
         const receive = (event: MessageEvent) => {
             const side: Side | undefined = event.source === base.current?.contentWindow ? 'base' : event.source === head.current?.contentWindow ? 'head' : undefined;
             const data = event.data;
@@ -65,34 +58,14 @@ export function Preview() {
                     logged.push(entry);
                     if (logged.length > MAX_ENTRIES) logged.shift();
                 });
-            } else if (data?.livebranch === 'view') {
-                views.current[side].set(data.index, data.view);
-                if (current().syncViews) show(other(side), data.index, data.view);
-            } else if (data?.livebranch === 'follow') {
-                able.current[side].add(data.index);
-                const view = views.current[other(side)].get(data.index);
-                if (view !== undefined && current().syncViews) show(side, data.index, view);
-                setState({syncable: able.current.base.size > 0 && able.current.head.size > 0});
+            } else if (data?.livebranch === 'input' && current().mirror) {
+                // The other page gets the same input, and its own code handles it.
+                frames[other(side)].current?.contentWindow?.postMessage(data, '*');
             }
         };
         window.addEventListener('message', receive);
         return () => window.removeEventListener('message', receive);
     }, []);
-
-    // A page that loads again starts from its own view, and says again what it can follow.
-    const forget = (side: Side) => {
-        views.current[side].clear();
-        able.current[side].clear();
-        setState({syncable: false});
-    };
-    useEffect(() => forget('head'), [session?.url, runs]);
-    useEffect(() => forget('base'), [baseSession?.url, runs]);
-    // Views that moved apart come together when syncing is turned on, to the view of the link's own side.
-    useEffect(() => {
-        if (!syncViews) return;
-        const [from, to]: Side[] = views.current.head.size ? ['head', 'base'] : ['base', 'head'];
-        for (const [index, view] of views.current[from]) show(to, index, view);
-    }, [syncViews]);
 
     // The padding is inside, as padding of the side itself would count toward its width and move the previews off the bar.
     const waiting = (text: string) => (

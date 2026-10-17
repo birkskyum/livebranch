@@ -46,13 +46,9 @@ export interface State {
     /** Type errors of the page and the link's files. They arrive after the preview. */
     typeProblems: Problem[];
     checking: boolean;
-    /** Whether the views of a comparison follow each other. It is kept for the next visit. */
-    syncViews: boolean;
-    /** Whether both pages of the comparison can show the other's views, through their adapter. */
-    syncable: boolean;
+    /** Whether input on one page of a comparison is given to the other page too. The link says so. */
+    mirror: boolean;
 }
-
-const SYNC_KEY = 'livebranch-sync-views';
 
 export const useStore = create<State>()(() => ({
     phase: 'landing',
@@ -75,8 +71,7 @@ export const useStore = create<State>()(() => ({
     building: false,
     typeProblems: [],
     checking: false,
-    syncViews: localStorage.getItem(SYNC_KEY) !== 'off',
-    syncable: false,
+    mirror: false,
 }));
 
 /** The state now, for code outside the components. */
@@ -224,7 +219,8 @@ export async function openFromLocation(): Promise<void> {
     const spec = await decodeSpec(location.search, location.hash);
     // A result link starts with only the preview. The code and the console are one click away.
     const resultOnly = params.get('view') === 'result';
-    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
+    const mirror = params.has('mirror') && params.get('mirror') !== '0';
+    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, mirror, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
     listing = undefined;
     reads.clear();
     if (isEmptySpec(spec)) {
@@ -275,24 +271,35 @@ export function edit(path: string, text: string): void {
     }, 350);
 }
 
-/** Lets the views of a comparison follow each other, or move on their own. */
-export function setSyncViews(on: boolean): void {
-    localStorage.setItem(SYNC_KEY, on ? 'on' : 'off');
-    setState({syncViews: on});
-}
-
 /** Whether only the preview shows. */
 export function isResultOnly(): boolean {
     return !current().showCode && !current().showPanel;
 }
 
-/** Shows or hides a part of the workbench, and keeps the address in step so that it can be copied. */
-export function setView(change: Partial<Pick<State, 'showCode' | 'showPanel' | 'tab'>>): void {
-    setState(change);
+/** The parameters of a link that say how it shows, apart from what it runs. */
+function viewParams(resultOnly: boolean, mirror: boolean): string {
+    return `${resultOnly ? 'view=result&' : ''}${mirror ? 'mirror=1&' : ''}`;
+}
+
+/** Keeps the address in step with how the link shows, so that it can be copied. */
+function writeAddress(): void {
     const params = new URLSearchParams(location.hash.slice(1));
     params.delete('view');
+    params.delete('mirror');
     const rest = params.toString().replaceAll('%2F', '/').replaceAll('%40', '@').replaceAll('%3A', ':');
-    history.replaceState(null, '', `#${isResultOnly() ? 'view=result&' : ''}${rest}`);
+    history.replaceState(null, '', `#${viewParams(isResultOnly(), current().mirror)}${rest}`);
+}
+
+/** Shows or hides a part of the workbench. */
+export function setView(change: Partial<Pick<State, 'showCode' | 'showPanel' | 'tab'>>): void {
+    setState(change);
+    writeAddress();
+}
+
+/** Gives input on one page of a comparison to the other page too, or stops. */
+export function setMirror(on: boolean): void {
+    setState({mirror: on});
+    writeAddress();
 }
 
 /** The files that the open project runs on top of its source: the link's, or else the description's, with the edits. */
@@ -335,7 +342,7 @@ export async function shareLink(resultOnly = isResultOnly(), change: Partial<Lin
         };
     }
     const params = await encodeSpec({...link, ...change});
-    return `${base}#${resultOnly ? 'view=result&' : ''}${params}`;
+    return `${base}#${viewParams(resultOnly, current().mirror)}${params}`;
 }
 
 /**
