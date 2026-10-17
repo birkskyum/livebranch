@@ -243,6 +243,21 @@ async function defaultBranchOf(gh: string, url: URL, context: ExecutionContext):
     }
 }
 
+/**
+ * Sends the browser on to the link of a pasted address. The page does it, because a server never
+ * sees the fragment of an address, and its own redirect would drop it. The parameters of that
+ * fragment win over the ones that the path gives, as later ones do in a link, so that
+ * `/owner/repo/pull/1#base=v1.0.0&mirror=1` keeps both.
+ */
+function sendOn(origin: string, fragment: string): Response {
+    const script = `const params = new URLSearchParams(${JSON.stringify(fragment)});
+for (const [key, value] of new URLSearchParams(location.hash.slice(1))) if (value) params.set(key, value);
+location.replace('/#' + params.toString().replaceAll('%2F', '/').replaceAll('%40', '@').replaceAll('%3A', ':'));`;
+    const target = `${origin}/#${fragment}`.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+    const html = `<!doctype html>\n<meta charset="utf-8">\n<title>livebranch</title>\n<script>${script.replaceAll('<', '\\u003c')}</script>\n<noscript><a href="${target}">Open the link</a></noscript>\n`;
+    return new Response(html, {headers: {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store'}});
+}
+
 export default {
     async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
@@ -251,6 +266,6 @@ export default {
         if (!source) return env.ASSETS.fetch(request);
         // A pull request opens next to the branch that most of them go into, which shows what it changes.
         const base = isPullRequest(source.gh) ? await defaultBranchOf(source.gh, url, context) : undefined;
-        return Response.redirect(`${url.origin}/#${await encodeSpec({...source, base})}`, 302);
+        return sendOn(url.origin, await encodeSpec({...source, base}));
     },
 };

@@ -13,7 +13,7 @@ Put `https://livebranch.dev/` in front of a GitHub URL of a repository, a branch
 
 The same as link parameters: `https://livebranch.dev/#gh=owner/repo@ref`.
 
-The address of a pull request opens it next to the repository's default branch, so that what it changes shows. It redirects to `#gh=owner/repo@pull/123&base=main`. The bar over the previews names each side, and starts, changes and stops a comparison.
+The address of a pull request opens it next to the repository's default branch, so that what it changes shows. It redirects to `#gh=owner/repo@pull/123&base=main`, and parameters in its own fragment win (`livebranch.dev/owner/repo/pull/123#base=v1.0.0&mirror=1`). The bar over the previews names each side, and starts, changes and stops a comparison.
 
 ## A demo in the description of a pull request
 

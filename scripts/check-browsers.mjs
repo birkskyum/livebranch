@@ -4,8 +4,9 @@
 // Before that, what each side logs has to show in the console of that side, which is under it, and
 // the lines between the files, the code, the previews and the panel have to move, also across a
 // preview. The files start 192 pixels wide and keep their width when the code panel is made wider.
-// With input mirrored, a drag on the map of the pull request has to move the map of main the same
-// way, and without, not at all. The icon of
+// The address asks for input to be mirrored, in its fragment, which has to survive the redirect.
+// Mirrored, a drag on the map of the pull request has to move the map of main the same way, and
+// once the bar turns mirroring off, not at all. The icon of
 // the panel has to count an error of the console. Shared at the commits as previews
 // alone, the link has to name both commits, and the demo has to copy as a block for a pull request.
 // Each ref has to be named once, in the bar over its own preview, which lines up with it. The
@@ -48,7 +49,7 @@ const pages = {
     },
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
     'pull request address': {
-        url: `${site}maplibre/maplibre-gl-js/pull/8628`,
+        url: `${site}maplibre/maplibre-gl-js/pull/8628#mirror=1`,
         ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.mirrors && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.getByRole('tab', {name: /^Console/}).click();
@@ -77,12 +78,12 @@ const pages = {
                 return cameras();
             };
             const start = await cameras();
-            await page.getByRole('button', {name: 'Mirror input'}).click({timeout: 5000}).catch(() => {});
-            const mirroredLink = await page.evaluate(() => location.hash.includes('mirror=1'));
+            const mirroredLink = await page.evaluate(() => window.__livebranch.state.mirror && location.hash.includes('mirror=1'));
             const mirrored = await dragMap();
             await page.getByRole('button', {name: 'Mirror input'}).click({timeout: 5000}).catch(() => {});
+            const plainLink = await page.evaluate(() => !window.__livebranch.state.mirror && !location.hash.includes('mirror='));
             const alone = await dragMap();
-            const mirrors = mirroredLink && mirrored[0] === mirrored[1] && mirrored[1] !== start[1] && alone[0] === mirrored[0] && alone[1] !== mirrored[1];
+            const mirrors = mirroredLink && plainLink && mirrored[0] === mirrored[1] && mirrored[1] !== start[1] && alone[0] === mirrored[0] && alone[1] !== mirrored[1];
             // What the page copies is kept, so that this runs where the browser may not write to the clipboard.
             await page.evaluate(() => {
                 window.copied = [];

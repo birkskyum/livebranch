@@ -148,7 +148,8 @@ agents that use the site.
 - `POST /api/link` makes a link from a source and files, so that a caller does not have to encode
   the `code` parameter.
 - `POST /api/check` compiles and type checks without a browser and returns the problems as JSON.
-- A GitHub address as the path redirects to its link (see above).
+- A GitHub address as the path redirects to its link (see above). The page redirects, as only it
+  sees the fragment, and parameters in the fragment win (`/owner/repo/pull/1#base=v1.0.0&mirror=1`).
 
 `wrangler.jsonc` describes the Worker. `pnpm exec wrangler dev` runs it in a local workerd, and
 `wrangler deploy` puts it on livebranch.dev. The same config is what celld reads for self-hosting,
