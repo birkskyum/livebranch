@@ -20,6 +20,10 @@
         // The GitHub reader is asked up to four times per opened link and its answers are cached.
         {"name": "GITHUB_LIMIT", "namespace_id": "1003", "simple": {"limit": 300, "period": 60}},
     ],
+    // Pictures of pull requests that GitHub Actions workflows post (worker/pictures.ts), and the
+    // accounts whose repositories may store them.
+    "r2_buckets": [{"binding": "PICTURES", "bucket_name": "livebranch-pictures"}],
+    "vars": {"PICTURE_OWNERS": "maplibre,birkskyum"},
     // A check within the API's source budget takes a few seconds.
     "limits": {"cpu_ms": 15000},
     // A Worker may not compile WebAssembly from bytes, which the default build of the lexer does.

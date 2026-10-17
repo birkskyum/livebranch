@@ -47,6 +47,9 @@ importers:
       immer:
         specifier: ^11.1.21
         version: 11.1.21
+      jose:
+        specifier: ^6.2.12
+        version: 6.2.12
       just-bash:
         specifier: ^3.6.0
         version: 3.6.0(supports-color@10.2.2)

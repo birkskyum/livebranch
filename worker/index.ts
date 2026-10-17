@@ -8,6 +8,7 @@ import {branchesAt, defaultBranch, listTree, resolveRef} from '../src/engine/sou
 import {resolveSource, type GitReader} from '../src/engine/sources/github.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
 import {TooLargeError} from '../src/engine/tsc.ts';
+import {getPicture, PictureError, putPicture, type Bucket} from './pictures.ts';
 
 interface Env {
     ASSETS: {fetch(request: Request): Promise<Response>};
@@ -17,6 +18,10 @@ interface Env {
     GITHUB_LIMIT?: {limit(options: {key: string}): Promise<{success: boolean}>};
     /** Optional secret. Without it, a caller sends a GitHub token of their own to read from GitHub. */
     GITHUB_TOKEN?: string;
+    /** The pictures of pull requests that workflows post (worker/pictures.ts). */
+    PICTURES?: Bucket;
+    /** The accounts whose repositories may store pictures, separated by commas, or `*`. */
+    PICTURE_OWNERS?: string;
 }
 
 const MAX_BODY_BYTES = 1_000_000;
@@ -181,11 +186,28 @@ const ENDPOINTS = {
     endpoints: {
         'POST /api/link': 'Makes a link. Body: {gh?, base?, entry?, gist?, adapter?, files?, result?, pin?}. Answers {url}.',
         'POST /api/check': `Compiles and type checks without a browser, up to ${SOURCE_BUDGET / 1e6} MB of source. Body: {gh?, entry?, gist?, adapter?, files?}. Answers {problems, ...}.`,
+        'PUT /api/pictures/<owner>/<repo>/<run>/<base|head>.png': 'Stores a picture of a pull request for a GitHub Actions run, with its OIDC token as the bearer. GET serves it.',
     },
 };
 
+/** Serves the pictures of pull requests, and stores the ones that a workflow run took. */
+async function pictures(request: Request, env: Env, url: URL): Promise<Response> {
+    if (!env.PICTURES) return json({error: 'This site keeps no pictures.'}, 404);
+    if (request.method === 'GET' || request.method === 'HEAD') return getPicture(url.pathname, env.PICTURES);
+    if (request.method !== 'PUT') return json({error: 'Use GET or PUT.'}, 405);
+    const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
+    if (env.API_LIMIT && !(await env.API_LIMIT.limit({key: address})).success) return json({error: 'Too many requests. Try again in a minute.'}, 429);
+    try {
+        const owners = (env.PICTURE_OWNERS ?? '').split(',').map(owner => owner.trim().toLowerCase()).filter(Boolean);
+        return json({url: `${url.origin}/api/pictures/${await putPicture(request, env.PICTURES, owners)}`}, 201);
+    } catch (error) {
+        return json({error: error instanceof Error ? error.message : String(error)}, error instanceof PictureError ? error.status : 500);
+    }
+}
+
 async function api(request: Request, env: Env, url: URL, context: ExecutionContext): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: CORS});
+    if (url.pathname.startsWith('/api/pictures/')) return pictures(request, env, url);
     if (request.method !== 'GET' && request.method !== 'POST') return json({error: 'Use GET or POST.'}, 405);
     const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
     const reader = url.pathname.startsWith('/api/github/');
