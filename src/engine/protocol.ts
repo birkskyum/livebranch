@@ -1,4 +1,5 @@
 import type {Problem} from './build.ts';
+import type {ScriptRequest, ScriptResult} from './project.ts';
 import type {LinkSpec} from './spec.ts';
 
 export interface Step {
@@ -37,7 +38,27 @@ export interface OpenOptions {
     base: string;
     /** Reuse a finished build of the same inputs. */
     cache: boolean;
+    /** Where the link's previews and scripts run, apart from the app (src/ui/sandbox.ts). */
+    sandbox: SandboxLink;
 }
+
+/** A host of the link's own, and the port to the page on it that takes its builds and runs its scripts. */
+export interface SandboxLink {
+    /** The URL of the app on that host, ending with a slash. */
+    base: string;
+    port: MessagePort;
+}
+
+/** What the engine sends to a sandbox. Paths are encoded as in a URL. */
+export type SandboxRequest =
+    | {type: 'publish'; reply: number; id: string; files: [path: string, body: string | Uint8Array, type: string][]}
+    | {type: 'run'; run: number; request: ScriptRequest}
+    | {type: 'stop'; run: number};
+
+/** What a sandbox answers. A run's messages are those of public/rt/node-runner.js. */
+export type SandboxReply =
+    | {reply: number; error?: string}
+    | {run: number; data?: {type: 'stdout' | 'stderr'; text: string} | ({type: 'exit'} & ScriptResult); error?: string};
 
 export interface FileEntry {
     path: string;

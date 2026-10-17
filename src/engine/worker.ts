@@ -2,7 +2,7 @@ import {build, warmUp, type Output, type Problem} from './build.ts';
 import {plainNodeCommand, runNodeScript} from './node-run.ts';
 import {fetchPrebuilt, type Stale} from './prebuilt.ts';
 import {hash, openProject, type Env, type Project, type ScriptIo, type ScriptRequest, type ScriptResult} from './project.ts';
-import type {EngineCalls, FileEntry, OpenOptions, Reply, Request, SessionInfo, Step} from './protocol.ts';
+import type {EngineCalls, FileEntry, OpenOptions, Reply, Request, SandboxLink, SandboxReply, SandboxRequest, SessionInfo, Step} from './protocol.ts';
 import type {Shell} from './shell.ts';
 import type {LinkSpec} from './spec.ts';
 import type {WasmModule} from './tsc.ts';
@@ -18,15 +18,26 @@ const io: ScriptIo = {
     stderr: text => send({event: 'output', stream: 'stderr', text}),
 };
 
+/** The port to the sandbox of the open link, and what waits for its answers. */
+interface Sandbox {
+    base: string;
+    port: MessagePort;
+    next: number;
+    waiting: Map<number, (answer: SandboxReply) => void>;
+}
+
 let project: Project | undefined;
 let env: Env | undefined;
 let base = '';
+let sandbox: Sandbox | undefined;
 let opened: {id: string; label: string; log: string; setupProblems: Problem[]; prepared: boolean} | undefined;
 let edits: Record<string, string> = {};
 let shell: Shell | undefined;
 let wasm: Promise<WasmModule> | undefined;
 
-const buildCache = (id: string) => `livebranch-build-${id}`;
+const buildCache = (id: string) => `livebranch-build-v2-${id}`;
+// Builds from before previews had hosts of their own load the runtime from the app's host, which a sandbox does not allow.
+void caches.keys().then(names => Promise.all(names.filter(name => /^livebranch-build-(?!v2-)/.test(name)).map(name => caches.delete(name))));
 
 /** GitHub's file list of a commit never changes, and the anonymous API allows few requests, so it is kept. */
 async function cachedFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -39,27 +50,60 @@ async function cachedFetch(url: string, init?: RequestInit): Promise<Response> {
     return response;
 }
 
-function runScript(base: string, request: ScriptRequest, streams: ScriptIo): Promise<ScriptResult> {
+function connect(link: SandboxLink): Sandbox {
+    const connected: Sandbox = {base: link.base, port: link.port, next: 0, waiting: new Map()};
+    link.port.onmessage = ({data}: MessageEvent<SandboxReply>) => connected.waiting.get('reply' in data ? data.reply : data.run)?.(data);
+    return connected;
+}
+
+/** Sends files of a build to the sandbox, and waits until its service worker can serve them. */
+function sendFiles(to: Sandbox, id: string, files: [string, string | Uint8Array, string][]): Promise<void> {
+    const reply = to.next++;
     return new Promise((resolve, reject) => {
-        // A URL of its own, for the same reason as in client.ts: two engines may run a script at once.
-        const worker = new Worker(`${base}rt/node-runner.js?run=${crypto.randomUUID()}`, {type: 'module', name: request.script});
-        const finish = (settle: () => void) => {
-            clearTimeout(timer);
-            worker.terminate();
-            settle();
-        };
-        const timer = setTimeout(() => finish(() => reject(new Error(`${request.script} did not finish in ${SCRIPT_TIMEOUT_MS / 1000} s.`))), SCRIPT_TIMEOUT_MS);
-        worker.onmessage = ({data}) => {
-            if (data.type === 'stdout') streams.stdout(data.text);
-            else if (data.type === 'stderr') streams.stderr(data.text);
-            else if (data.type === 'exit') finish(() => resolve({code: data.code, written: data.written, removed: data.removed}));
-        };
-        worker.onerror = event => finish(() => reject(new Error(event.message || `${request.script} could not start.`)));
-        worker.postMessage(request);
+        to.waiting.set(reply, answer => {
+            to.waiting.delete(reply);
+            if (answer.error !== undefined) reject(new Error(answer.error));
+            else resolve();
+        });
+        to.port.postMessage({type: 'publish', reply, id, files} satisfies SandboxRequest);
     });
 }
 
-function createEnv(base: string): Env {
+/** Sends a build that this browser kept to the sandbox, which may not have it. */
+async function resend(to: Sandbox, id: string): Promise<void> {
+    const cache = await caches.open(buildCache(id));
+    const root = `${base}~p/${id}`;
+    const files = await Promise.all((await cache.keys()).map(async request => {
+        const response = await cache.match(request);
+        return [request.url.slice(root.length), new Uint8Array(await response!.arrayBuffer()), response!.headers.get('content-type') ?? ''] as [string, Uint8Array, string];
+    }));
+    await sendFiles(to, id, files);
+}
+
+/** Runs a script in a worker of the sandbox, so that the project's code does not run on the app's host. */
+function runScript(to: Sandbox, request: ScriptRequest, streams: ScriptIo): Promise<ScriptResult> {
+    return new Promise((resolve, reject) => {
+        const run = to.next++;
+        const finish = (settle: () => void) => {
+            clearTimeout(timer);
+            to.waiting.delete(run);
+            to.port.postMessage({type: 'stop', run} satisfies SandboxRequest);
+            settle();
+        };
+        const timer = setTimeout(() => finish(() => reject(new Error(`${request.script} did not finish in ${SCRIPT_TIMEOUT_MS / 1000} s.`))), SCRIPT_TIMEOUT_MS);
+        to.waiting.set(run, answer => {
+            if (!('run' in answer)) return;
+            const {data, error} = answer;
+            if (error !== undefined) finish(() => reject(new Error(error)));
+            else if (data?.type === 'stdout') streams.stdout(data.text);
+            else if (data?.type === 'stderr') streams.stderr(data.text);
+            else if (data?.type === 'exit') finish(() => resolve({code: data.code, written: data.written, removed: data.removed}));
+        });
+        to.port.postMessage({type: 'run', run, request} satisfies SandboxRequest);
+    });
+}
+
+function createEnv(base: string, to: Sandbox): Env {
     // The site's server reads GitHub's git endpoint for the browser, which may not. Where the site
     // has no server (the dev server, a static host), these fail and the engine asks GitHub's API.
     const ask = async (path: string) => {
@@ -73,20 +117,23 @@ function createEnv(base: string): Env {
             resolve: async (owner, repo, ref) => (await ask(`resolve?repo=${owner}/${repo}&ref=${encodeURIComponent(ref)}`)).commit ?? undefined,
             tree: async (owner, repo, commit) => (await ask(`tree?repo=${owner}/${repo}&commit=${commit}`)).paths,
         },
-        runtimeBase: base,
+        // Pages and scripts run on the sandbox's host and load the runtime from there.
+        runtimeBase: new URL(base).pathname,
         wasm() {
             wasm ??= WebAssembly.compileStreaming(fetch(tsrsWasm));
             return wasm;
         },
+        // The app's host keeps the build, and the sandbox gets a copy to serve.
         async publish(id, files) {
             const cache = await caches.open(buildCache(id));
             const root = `${base}~p/${id}`;
-            await Promise.all([...files].map(([path, file]) => {
-                const headers = {'content-type': file.type, 'cache-control': 'no-store'};
-                return cache.put(root + encodeURI(path), new Response(file.body as BodyInit, {headers}));
-            }));
+            const encoded = [...files].map(([path, file]) => [encodeURI(path), file.body, file.type] as [string, string | Uint8Array, string]);
+            await Promise.all([
+                ...encoded.map(([path, body, type]) => cache.put(root + path, new Response(body as BodyInit, {headers: {'content-type': type, 'cache-control': 'no-store'}}))),
+                sendFiles(to, id, encoded),
+            ]);
         },
-        runScript: (request, streams) => runScript(base, request, streams),
+        runScript: (request, streams) => runScript(to, request, streams),
     };
 }
 
@@ -157,10 +204,9 @@ async function buildAndPublish(steps: Step[], start: number): Promise<SessionInf
     const current = project!;
     const timed = stepTimer(steps);
     const result = await timed('build', undefined, () => build(current, env!, (name, detail) => send({event: 'step', name, detail})));
-    const root = `${base}~p/${current.id}`;
     const info: SessionInfo = {
         id: current.id,
-        url: root + encodeURI(result.entry),
+        url: `${sandbox!.base}~p/${current.id}${encodeURI(result.entry)}`,
         label: current.label,
         gh: current.spec.gh,
         commit: current.commit,
@@ -201,7 +247,9 @@ const calls: {[K in keyof EngineCalls]: (...args: Parameters<EngineCalls[K]>) =>
         const start = performance.now();
 
         base = options.base;
-        env = createEnv(base);
+        sandbox?.port.close();
+        sandbox = connect(options.sandbox);
+        env = createEnv(base, sandbox);
         shell = undefined;
         opened = undefined;
         const current = project = await timed('source', spec.gh ?? spec.gist ?? 'files in the link', () => openProject(spec, env!));
@@ -210,11 +258,11 @@ const calls: {[K in keyof EngineCalls]: (...args: Parameters<EngineCalls[K]>) =>
             const meta = await (await caches.open(buildCache(current.id))).match(`${base}~p/${current.id}/__meta__.json`);
             const info: SessionInfo | undefined = meta && (await meta.json()).info;
             if (info) {
-                await touch(current.id);
+                await Promise.all([touch(current.id), resend(sandbox, current.id)]);
                 opened = {id: current.id, label: current.label, log: info.log, setupProblems: [], prepared: false};
                 edits = {};
                 // A commit builds the same under every ref and in every fork, so the stored build says who made it and not who asks.
-                return {...info, gh: current.spec.gh, label: current.label, steps, ms: performance.now() - start, cached: true};
+                return {...info, url: `${sandbox.base}~p/${current.id}${encodeURI(info.entry)}`, gh: current.spec.gh, label: current.label, steps, ms: performance.now() - start, cached: true};
             }
         }
 

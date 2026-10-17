@@ -73,20 +73,34 @@ import of the project's own package name resolves to `src/index.ts`.
 
 1. It lists the files of the commit with one GitHub API request and fetches only the files that
    the page reaches through imports, from raw.githubusercontent.com.
-2. It runs the project's setup commands, such as code generators, in a worker that gives them
-   `fs`, `path`, `glob` and `process` over the project's files, and `zlib`. Their imports of npm
+2. It runs the project's setup commands, such as code generators, in a worker on the link's host
+   that gives them `fs`, `path`, `glob` and `process` over the project's files, and `zlib`. Their imports of npm
    packages load from esm.sh. A package that a script imports by names it computes, as
    maplibre-gl-js's Unicode generator does with hundreds of files, comes from npm as one tarball
    instead, and its modules are served with the build.
 3. tsrs compiles the page's scripts and everything they import at run time, without type
    checking. For maplibre-gl-js that is about 390 modules in under a second.
 4. Imports in the output are rewritten to the paths of their sources and to CDN URLs, and a
-   service worker serves the result from the Cache API under `~p/<build id>/`.
+   service worker on the link's host serves the result from the Cache API under `~p/<build id>/`.
 5. In the background, tsrs type checks the page and the link's files against the project and
    the type declarations of its npm dependencies. The problems show up under the preview.
 
 A build is kept in the browser by a hash of its inputs. Opening the same link again takes a few
 milliseconds. The first build of a maplibre-gl-js commit takes about four seconds.
+
+## Where previews run
+
+A link's previews and setup scripts run on a host of its own, `p-<hash>.livebranch.dev`, where the
+hash is of the link's sources. A browser keeps storage apart by host, so the code of a pull request
+can only change what its own link shows, and neither the app nor other links. The engine stays on
+the app's host, with the builds and the problems that the app shows. A hidden frame on the link's
+host (`public/rt/sandbox.js`) gets each build from it and runs the scripts, and the service worker
+there serves the build. On a link's host the Worker serves only that frame, the service worker and
+the runtime, and the preview may not move the app's tab to another page.
+
+A deploy elsewhere needs a DNS record and a certificate for `*.<host>` too. On Cloudflare,
+Universal SSL covers one level of subdomains. `wrangler dev` gives the Worker the host of its first
+route for every request, so locally a link's host serves the whole app, which does no harm.
 
 ## From a GitHub address
 
@@ -264,8 +278,6 @@ and then ran out of resources.
 
 ## Limits
 
-- The preview runs on the app's own origin, because a service worker serves it. Do not keep
-  anything private on that origin.
 - Refs and file lists are read through GitHub's git endpoint (`src/engine/sources/git.ts`), which
   has no hourly allowance. A browser may not ask that endpoint, so the Worker does it for the page
   at `/api/github/*`. Without the Worker (the dev server, a static host) the page asks GitHub's

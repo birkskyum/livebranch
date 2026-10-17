@@ -2,10 +2,11 @@ import {produce} from 'immer';
 import {create} from 'zustand';
 import {createEngine, type Engine} from '../engine/client.ts';
 import type {Problem} from '../engine/build.ts';
-import type {FileEntry, SessionInfo} from '../engine/protocol.ts';
+import type {FileEntry, OpenOptions, SessionInfo} from '../engine/protocol.ts';
 import {forkedFrom} from '../engine/sources/github.ts';
 import {demoSection, fetchPullRequest, type PullRequest} from '../engine/sources/pull.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeBase, parseGithubRef, unpack, type LinkSpec} from '../engine/spec.ts';
+import {openSandbox, type Sandbox} from './sandbox.ts';
 
 export type Phase = 'landing' | 'loading' | 'ready' | 'failed';
 export type Tab = 'problems' | 'console' | 'terminal' | 'build';
@@ -111,7 +112,7 @@ export function setState(change: Partial<State> | ((draft: State) => void)): voi
 /** Where the code of livebranch is. */
 export const REPOSITORY = 'https://github.com/birkskyum/livebranch';
 
-/** The URL of the app's directory. The service worker's scope and the engine's assets hang off it. */
+/** The URL of the app's directory. The engine's assets hang off it, and a link's host has the app at the same path. */
 export const base = new URL('./', location.href.split(/[?#]/)[0]).href;
 
 let engine: Engine | undefined;
@@ -131,24 +132,30 @@ function getBaseEngine(): Engine {
     return baseEngine;
 }
 
-/** Registers the service worker that serves previews, and waits until it controls this page. */
-async function ensureServiceWorker(): Promise<void> {
-    if (!('serviceWorker' in navigator)) throw new Error('This browser has no service workers, which the preview needs.');
-    await navigator.serviceWorker.register(`${base}sw.js`, {scope: base});
-    await navigator.serviceWorker.ready;
-    if (navigator.serviceWorker.controller) return;
-    await new Promise<void>(resolve => {
-        navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), {once: true});
-        setTimeout(resolve, 2000);
-    });
-    if (navigator.serviceWorker.controller) return;
-    // A forced reload leaves the page without its service worker. A normal reload brings it back.
-    if (!sessionStorage.getItem('livebranch-reloaded')) {
-        sessionStorage.setItem('livebranch-reloaded', '1');
-        location.reload();
-        await new Promise(() => {});
+// Previews ran on the app's host before they had hosts of their own, under its service worker, which goes.
+void navigator.serviceWorker?.getRegistrations().then(registrations => registrations.forEach(registration => registration.unregister()));
+
+type Side = 'head' | 'base';
+const sandboxes: Partial<Record<Side, Sandbox>> = {};
+
+/**
+ * Opens a link in an engine, with its previews and scripts in a sandbox of its own. The sandbox of
+ * the side's last link closes once the engine, which answers calls in order, is done with it. A
+ * call that is no longer current when its sandbox is ready opens nothing and gives undefined.
+ */
+async function openIn(side: Side, engine: Engine, spec: LinkSpec, options: Omit<OpenOptions, 'sandbox'>, isCurrent: () => boolean): Promise<SessionInfo | undefined> {
+    const sandbox = await openSandbox(spec, base);
+    if (!isCurrent()) {
+        sandbox.close();
+        return undefined;
     }
-    throw new Error('The service worker does not control this page. Reload it without holding shift.');
+    const previous = sandboxes[side];
+    sandboxes[side] = sandbox;
+    try {
+        return await engine.open(spec, {...options, sandbox: {base: sandbox.base, port: sandbox.port}});
+    } finally {
+        previous?.close();
+    }
 }
 
 /**
@@ -257,19 +264,19 @@ export async function openFromLocation(): Promise<void> {
     }
     setState({phase: 'loading', step: 'starting'});
     try {
-        const [{pull, problem = ''}] = await Promise.all([readPull(spec), ensureServiceWorker()]);
+        const {pull, problem = ''} = await readPull(spec);
         if (opening !== openings) return;
-        sessionStorage.removeItem('livebranch-reloaded');
         setState({pull, pullProblem: problem});
         const opened = pull && Object.keys(pull.files).length ? {...spec, files: pull.files} : spec;
         const options = {base, cache: !params.has('nocache') && !import.meta.env.DEV};
         const against = baseSource(spec);
-        const baseSession = against === undefined ? undefined : getBaseEngine().open({...opened, gh: against, base: undefined}, options).catch((error: unknown) => {
+        const isCurrent = () => opening === openings;
+        const baseSession = against === undefined ? undefined : openIn('base', getBaseEngine(), {...opened, gh: against, base: undefined}, options, isCurrent).catch((error: unknown) => {
             if (opening === openings) setState({baseError: error instanceof Error ? error.message : String(error)});
             return undefined;
         });
-        const session = await getEngine().open(opened, options);
-        if (opening === openings) finish(session);
+        const session = await openIn('head', getEngine(), opened, options, isCurrent);
+        if (opening === openings && session) finish(session);
         const built = await baseSession;
         if (opening === openings) setState({base: built});
     } catch (error) {

@@ -8,10 +8,11 @@ import {branchesAt, defaultBranch, listTree, resolveRef} from '../src/engine/sou
 import {resolveSource, type GitReader} from '../src/engine/sources/github.ts';
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeGithubSource, parseGithubRef, type LinkSpec} from '../src/engine/spec.ts';
 import {TooLargeError} from '../src/engine/tsc.ts';
+import {isLinkHost, serveLinkHost, type Assets} from './hosts.ts';
 import {getPicture, PictureError, putPicture, type Bucket} from './pictures.ts';
 
 interface Env {
-    ASSETS: {fetch(request: Request): Promise<Response>};
+    ASSETS: Assets;
     /** Counts requests to the API per address. */
     API_LIMIT?: {limit(options: {key: string}): Promise<{success: boolean}>};
     /** The same for the GitHub reader, which a page asks several times and which is cheap. */
@@ -282,9 +283,14 @@ location.replace('/#' + params.toString().replaceAll('%2F', '/').replaceAll('%40
 export default {
     async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
+        // wrangler dev gives every request the host of the first route, so this is only on Cloudflare.
+        if (isLinkHost(url.hostname)) return serveLinkHost(request, env.ASSETS);
         if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return api(request, env, url, context);
+        // Every request comes here first, since a link's host serves less. The app's files win over pasted addresses.
+        const asset = await env.ASSETS.fetch(request);
+        if (asset.status !== 404) return asset;
         const source = request.method === 'GET' ? sourceForPath(url.pathname) : undefined;
-        if (!source) return env.ASSETS.fetch(request);
+        if (!source) return asset;
         // A pull request opens next to the branch that most of them go into, which shows what it changes.
         const base = isPullRequest(source.gh) ? await defaultBranchOf(source.gh, url, context) : undefined;
         return sendOn(url.origin, await encodeSpec({...source, base}));

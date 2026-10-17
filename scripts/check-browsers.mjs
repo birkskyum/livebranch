@@ -17,6 +17,7 @@
 // The last page stands in for GitHub's answer about the pull request, to give its description a demo.
 // The small page is edited after its type check, and has to build again with the edit. A release of
 // maplibre-gl-js from before version 6 has to come up clean too.
+// Every preview has to run on a host of its link's own, from where it cannot reach the app.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
 //   site     the site to check, https://livebranch.dev/ by default
@@ -37,6 +38,22 @@ const small = await (await fetch(`${site}api/link`, {method: 'POST', headers: {'
 const {commit: head} = await (await fetch(`${site}api/github/resolve?repo=maplibre/maplibre-gl-js&ref=main`)).json();
 if (!head) throw new Error('The site did not say where main of maplibre-gl-js is.');
 const described = '```ts livebranch\nimport {Map} from "maplibre-gl";\ndocument.body.dataset.described = typeof Map;\n```\n';
+// The previews run on hosts of their own, so they are reached through Playwright's frames. The
+// hidden frames of the sandboxes are not previews.
+const PREVIEWS = 'iframe[title^="Preview"]';
+const previewFrames = async page => Promise.all((await page.locator(PREVIEWS).elementHandles()).map(handle => handle.contentFrame()));
+/** Runs `read` in each preview. A preview that is gone or not loaded gives undefined. */
+const inPreviews = async (page, read, arg) => Promise.all((await previewFrames(page)).map(frame => frame?.evaluate(read, arg).catch(() => undefined)));
+/** Runs `read` in the previews until `test` holds for what it gives, or the time is up, and gives the last of it. */
+async function untilPreviews(page, read, test, timeout = 30000) {
+    const end = Date.now() + timeout;
+    for (;;) {
+        const found = await inPreviews(page, read).catch(() => []);
+        if (test(found) || Date.now() > end) return found;
+        await page.waitForTimeout(200);
+    }
+}
+
 const pages = {
     // A local Worker names the live site in its links, so only the link's parameters are taken.
     'small page': {
@@ -45,8 +62,8 @@ const pages = {
         async after(page) {
             await page.evaluate(() => window.__livebranch.edit('/shape.ts', 'export function area(side: number): number { return side * 4; }\n'));
             // The page of the new build, or what went wrong.
-            await page.waitForFunction(() => window.__livebranch.state.error || document.querySelector('iframe')?.contentDocument?.querySelector('#out')?.textContent === 'area 12, 2 triangles', undefined, {timeout: 30000}).catch(() => {});
-            return {edited: await page.evaluate(() => window.__livebranch.state.error || document.querySelector('iframe')?.contentDocument?.querySelector('#out')?.textContent)};
+            const [out] = await untilPreviews(page, () => document.querySelector('#out')?.textContent, ([text]) => text === 'area 12, 2 triangles');
+            return {edited: await page.evaluate(() => window.__livebranch.state.error) || out};
         },
     },
     'maplibre pull request': {url: `${site}#gh=maplibre/maplibre-gl-js@pull/8628`, ok: found => found.canvas > 0},
@@ -57,13 +74,14 @@ const pages = {
         ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.tip === 'Reload both' && found.mirrors && found.replays === true && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.getByRole('tab', {name: /^Console/}).click();
-            await page.evaluate(() => document.querySelectorAll('iframe').forEach((frame, index) => frame.contentWindow.console.log(`side ${index}`)));
-            await page.evaluate(() => document.querySelector('iframe').contentWindow.console.error('broken on purpose'));
+            const previews = await previewFrames(page);
+            await Promise.all(previews.map((frame, index) => frame.evaluate(side => console.log(`side ${side}`), index)));
+            await previews[0].evaluate(() => console.error('broken on purpose'));
             const consoles = page.locator('section[aria-label^="Console of"]');
             await consoles.locator('li', {hasText: 'side 1'}).waitFor({timeout: 5000}).catch(() => {});
             const logged = await consoles.evaluateAll(columns => columns.map(column => [...column.querySelectorAll('li')].map(item => item.textContent).filter(text => text.startsWith('side ')).join()));
             const lineUp = columns => {
-                const frames = [...document.querySelectorAll('iframe')].map(frame => frame.getBoundingClientRect());
+                const frames = [...document.querySelectorAll('iframe[title^="Preview"]')].map(frame => frame.getBoundingClientRect());
                 return columns.length === 2 && columns.map(column => column.getBoundingClientRect()).every((column, index) => Math.abs(column.left - frames[index].left) <= 1 && Math.abs(column.right - frames[index].right) <= 1);
             };
             const aligned = await consoles.evaluateAll(lineUp);
@@ -74,9 +92,9 @@ const pages = {
             await page.mouse.move(0, 0);
             // The demo keeps its camera in the address of its page. With input mirrored, a drag on the
             // pull request's map moves main's the same way. Without, main's stays where it is.
-            const cameras = () => page.evaluate(() => [...document.querySelectorAll('iframe')].map(frame => frame.contentWindow.location.hash));
+            const cameras = () => inPreviews(page, () => location.hash);
             const dragMap = async () => {
-                const map = await page.locator('iframe').nth(1).boundingBox();
+                const map = await page.locator(PREVIEWS).nth(1).boundingBox();
                 await page.mouse.move(map.x + map.width / 2, map.y + map.height / 2);
                 await page.mouse.down();
                 await page.mouse.move(map.x + map.width / 2 - 120, map.y + map.height / 2 + 60, {steps: 12});
@@ -95,7 +113,7 @@ const pages = {
             const replays = await (async () => {
                 await page.getByRole('button', {name: 'Record'}).click({timeout: 5000});
                 await page.waitForFunction(() => window.__livebranch.state.recording === 'on', undefined, {timeout: 60000});
-                await page.waitForFunction(() => [...document.querySelectorAll('iframe')].every(frame => frame.contentWindow.location.hash), undefined, {timeout: 30000});
+                await untilPreviews(page, () => location.hash, hashes => hashes.length === 2 && hashes.every(Boolean));
                 const fresh = await cameras();
                 await dragMap();
                 await page.getByRole('button', {name: 'Stop recording'}).click();
@@ -132,7 +150,7 @@ const pages = {
                 await page.mouse.move(x + dx, y + dy, {steps: 10});
                 await page.mouse.up();
             };
-            const [files, frame] = [page.getByRole('navigation', {name: 'Files'}), page.locator('iframe').first()];
+            const [files, frame] = [page.getByRole('navigation', {name: 'Files'}), page.locator(PREVIEWS).first()];
             const before = {files: await files.boundingBox(), frame: await frame.boundingBox()};
             const resized = await drag('Width of the files', 80, 0).then(() => drag('Width of the code', 200, 0)).then(() => drag('Height of the panel', 0, -100)).then(async () => {
                 const after = {files: await files.boundingBox(), frame: await frame.boundingBox()};
@@ -145,7 +163,7 @@ const pages = {
                 return !location.hash.includes('base=') && !state.spec.base && state.phase === 'ready' && state.session;
             }, undefined, {timeout: 90000});
             await page.waitForTimeout(300);
-            return {sides: logged.join('|'), aligned, bars, badge, tip, mirrors, replays, shared, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+            return {sides: logged.join('|'), aligned, bars, badge, tip, mirrors, replays, shared, files: Math.round(before.files?.width), resized, alone: await page.locator(PREVIEWS).count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'commit at the head of a branch': {
@@ -164,7 +182,7 @@ const pages = {
     'demo in the description': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628`,
         ok: found => found.described.join() === 'function,function',
-        // The page asks for the description before the service worker controls it, which is as long as a test can answer in WebKit.
+        // GitHub's answer about the pull request, with a demo in its description.
         before: context => context.route('https://api.github.com/repos/maplibre/maplibre-gl-js/pulls/8628', route => route.fulfill({
             contentType: 'application/json',
             headers: {'access-control-allow-origin': '*'},
@@ -192,25 +210,37 @@ for (const name of names) {
             await page.waitForTimeout(3000);
             found = await page.evaluate(() => {
                 const {phase, error, session, typeProblems, console: logged, baseConsole} = window.__livebranch.state;
-                const preview = document.querySelector('iframe')?.contentDocument;
                 return {
                     phase,
                     error,
                     seconds: session && (session.ms / 1000).toFixed(1),
                     problems: [...session?.problems ?? [], ...typeProblems].map(problem => problem.text),
                     logged: [...logged, ...baseConsole ?? []].filter(entry => entry.level === 'error').map(entry => entry.text),
-                    out: preview?.querySelector('#out')?.textContent,
-                    canvas: preview?.querySelector('canvas')?.width,
-                    frames: document.querySelectorAll('iframe').length,
                     named: document.querySelectorAll('a[title="Open on GitHub"], [aria-label="Change the ref to compare with"]').length,
-                    described: [...document.querySelectorAll('iframe')].map(frame => frame.contentDocument?.body.dataset.described),
                 };
+            });
+            const inside = await inPreviews(page, () => {
+                let reaches = true;
+                try {
+                    void window.parent.document;
+                } catch {
+                    reaches = false;
+                }
+                return {out: document.querySelector('#out')?.textContent, canvas: document.querySelector('canvas')?.width, described: document.body.dataset.described, origin: location.origin, reaches};
+            });
+            const app = new URL(site).origin;
+            Object.assign(found, {
+                out: inside[0]?.out,
+                canvas: inside[0]?.canvas,
+                frames: inside.length,
+                described: inside.map(preview => preview?.described),
+                isolated: inside.length > 0 && inside.every(preview => preview && /^https?:\/\/p-[0-9a-f]{16}\./.test(preview.origin) && preview.origin !== app && !preview.reaches),
             });
             if (after && found.phase === 'ready') Object.assign(found, await after(page));
         } catch (error) {
             found = {error: String(error)};
         }
-        const clean = found.phase === 'ready' && !found.problems?.length && !found.logged?.length && !errors.length && ok(found);
+        const clean = found.phase === 'ready' && found.isolated && !found.problems?.length && !found.logged?.length && !errors.length && ok(found);
         failed ||= !clean;
         console.log(`${clean ? 'ok  ' : 'FAIL'} ${name}, ${label}${found.seconds ? `, ${found.seconds} s` : ''}`);
         if (!clean) console.log(JSON.stringify({...found, pageErrors: errors}, null, 2));

@@ -15,13 +15,15 @@ function Frame(props: {session: SessionInfo; gh: string | undefined; labelled: b
     const runs = useStore(state => state.runs);
     return (
         <div className="relative min-w-0 flex-1">
-            {/* A new run gets a new frame, so that no state of the old page survives. */}
+            {/* A new run gets a new frame, so that no state of the old page survives. The page runs on
+                the host of its link, and may do what a page does there, apart from leaving the app. */}
             <iframe
                 key={`${props.session.url}#${runs}`}
                 ref={props.frame}
                 className="h-full w-full border-0 bg-white"
                 title={props.labelled ? `Preview of ${refLabel(props.gh, props.session)}` : 'Preview'}
                 src={props.session.url}
+                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-downloads"
                 allow="geolocation; fullscreen; clipboard-write; xr-spatial-tracking"
             />
         </div>

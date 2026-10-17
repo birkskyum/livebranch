@@ -80,7 +80,8 @@ async function pictures(page: Page, out: string): Promise<Summary['sides']> {
             head: {commit: state.session?.commit ?? '', errors: errors(state.console), problems: [...state.session?.problems ?? [], ...state.typeProblems].map(problem => problem.text.split('\n')[0])},
         };
     });
-    const frames = page.locator('iframe');
+    // The hidden frames of the sandboxes, where the previews' hosts are set up, are not previews.
+    const frames = page.locator('iframe[title^="Preview"]');
     const comparing = Boolean(found.base.commit) && await frames.count() > 1;
     if (comparing) await frames.nth(0).screenshot({path: join(out, 'base.png')});
     await frames.nth(comparing ? 1 : 0).screenshot({path: join(out, 'head.png')});

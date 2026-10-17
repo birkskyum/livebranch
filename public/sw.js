@@ -1,6 +1,6 @@
-// Serves the preview of a build. The engine puts every file of a build into one cache, named by
-// the build's id, under `~p/<id>/`. A file that the build did not touch comes from the project's
-// source, whose URL the build's meta entry holds.
+// Serves the preview of a build on the host of its link. The sandbox page (rt/sandbox.js) puts every
+// file of a build into one cache, named by the build's id, under `~p/<id>/`. A file that the build
+// did not touch comes from the project's source, whose URL the build's meta entry holds.
 
 const PREFIX = '~p/';
 const TYPES = {
@@ -24,6 +24,10 @@ const TYPES = {
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+// The sandbox page asks for it when it loaded without a service worker (public/rt/sandbox.js).
+self.addEventListener('message', event => {
+    if (event.data === 'claim') event.waitUntil(self.clients.claim());
+});
 
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);

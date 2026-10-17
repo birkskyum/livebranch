@@ -1,5 +1,5 @@
-// The app is a Worker that serves the static build from dist. Only /api/* runs the script
-// (worker/index.ts), which is the engine behind an HTTP API.
+// The app is a Worker that serves the static build from dist, and the engine behind an HTTP API
+// (worker/index.ts). Each link's previews run on a host of its own, p-<hash>.livebranch.dev.
 {
     "$schema": "./node_modules/wrangler/config-schema.json",
     "name": "livebranch",
@@ -9,10 +9,15 @@
     "assets": {
         "directory": "./dist",
         "binding": "ASSETS",
-        "run_worker_first": ["/api", "/api/*"],
+        // A link's host serves only the service worker and the runtime, so every request asks the script.
+        "run_worker_first": true,
     },
-    // The app has one address. Links and the previews that a browser keeps belong to it.
-    "routes": [{"pattern": "livebranch.dev", "custom_domain": true}],
+    // The app has one address. The hosts of links need a DNS record for *.livebranch.dev, which
+    // Universal SSL covers, as it covers only one level.
+    "routes": [
+        {"pattern": "livebranch.dev", "custom_domain": true},
+        {"pattern": "*.livebranch.dev/*", "zone_name": "livebranch.dev"},
+    ],
     "workers_dev": false,
     // At most 30 requests a minute to the API from one address.
     "ratelimits": [

@@ -1,4 +1,4 @@
-import type {EngineCalls, Reply, Request} from './protocol.ts';
+import type {EngineCalls, OpenOptions, Reply, Request} from './protocol.ts';
 import workerUrl from './worker.ts?worker&url';
 
 export interface EngineEvents {
@@ -39,7 +39,9 @@ export function createEngine(): Engine {
     const call = (name: keyof EngineCalls) => (...args: unknown[]) => new Promise((resolve, reject) => {
         const id = nextId++;
         pending.set(id, {resolve, reject});
-        worker.postMessage({id, call: name, args} as Request);
+        // The port to a sandbox moves to the engine.
+        const ports = args.flatMap(arg => (arg as Partial<OpenOptions> | undefined)?.sandbox?.port ?? []);
+        worker.postMessage({id, call: name, args} as Request, ports);
     });
     return {events, open: call('open'), update: call('update'), check: call('check'), files: call('files'), read: call('read'), exec: call('exec')} as Engine;
 }
