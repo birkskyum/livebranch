@@ -5,7 +5,7 @@ import type {Problem} from '../engine/build.ts';
 import type {FileEntry, SessionInfo} from '../engine/protocol.ts';
 import {forkedFrom} from '../engine/sources/github.ts';
 import {demoSection, fetchPullRequest, type PullRequest} from '../engine/sources/pull.ts';
-import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeBase, parseGithubRef, type LinkSpec} from '../engine/spec.ts';
+import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeBase, parseGithubRef, unpack, type LinkSpec} from '../engine/spec.ts';
 
 export type Phase = 'landing' | 'loading' | 'ready' | 'failed';
 export type Tab = 'problems' | 'console' | 'terminal' | 'build';
@@ -48,6 +48,29 @@ export interface State {
     checking: boolean;
     /** Whether input on one page of a comparison is given to the other page too. The link says so. */
     mirror: boolean;
+    /** A recorded gesture, which plays on every page. The link carries it. */
+    gesture: Gesture | undefined;
+    /** Whether a gesture is being recorded: `loading` while the pages start afresh, then `on`. */
+    recording: false | 'loading' | 'on';
+    /** Whether a gesture is playing, the same way. */
+    playing: false | 'loading' | 'on';
+}
+
+/**
+ * One event of a recorded gesture, as `public/rt/preview.js` reports it, when it came after the
+ * pages started. Its place is a share of the page's width and height.
+ */
+export interface RecordedInput {
+    t: number;
+    kind: string;
+    type: string;
+    init: Record<string, unknown>;
+}
+
+export interface Gesture {
+    events: RecordedInput[];
+    /** The events as the `gesture` parameter of a link. */
+    packed: string;
 }
 
 export const useStore = create<State>()(() => ({
@@ -72,6 +95,9 @@ export const useStore = create<State>()(() => ({
     typeProblems: [],
     checking: false,
     mirror: false,
+    gesture: undefined,
+    recording: false,
+    playing: false,
 }));
 
 /** The state now, for code outside the components. */
@@ -220,7 +246,9 @@ export async function openFromLocation(): Promise<void> {
     // A result link starts with only the preview. The code and the console are one click away.
     const resultOnly = params.get('view') === 'result';
     const mirror = params.has('mirror') && params.get('mirror') !== '0';
-    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, mirror, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
+    const packed = params.get('gesture');
+    if (packed) void unpack<RecordedInput[]>(packed).then(events => { if (opening === openings) setState({gesture: {events, packed}}); }, () => {});
+    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, mirror, gesture: undefined, recording: false, playing: false, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
     listing = undefined;
     reads.clear();
     if (isEmptySpec(spec)) {
@@ -276,18 +304,18 @@ export function isResultOnly(): boolean {
     return !current().showCode && !current().showPanel;
 }
 
-/** The parameters of a link that say how it shows, apart from what it runs. */
-function viewParams(resultOnly: boolean, mirror: boolean): string {
-    return `${resultOnly ? 'view=result&' : ''}${mirror ? 'mirror=1&' : ''}`;
+/** The parameters of a link that say how it shows and what it plays, apart from what it runs. */
+function viewParams(resultOnly: boolean): string {
+    const {mirror, gesture} = current();
+    return `${resultOnly ? 'view=result&' : ''}${mirror ? 'mirror=1&' : ''}${gesture ? `gesture=${gesture.packed}&` : ''}`;
 }
 
 /** Keeps the address in step with how the link shows, so that it can be copied. */
 function writeAddress(): void {
     const params = new URLSearchParams(location.hash.slice(1));
-    params.delete('view');
-    params.delete('mirror');
+    for (const key of ['view', 'mirror', 'gesture']) params.delete(key);
     const rest = params.toString().replaceAll('%2F', '/').replaceAll('%40', '@').replaceAll('%3A', ':');
-    history.replaceState(null, '', `#${viewParams(isResultOnly(), current().mirror)}${rest}`);
+    history.replaceState(null, '', `#${viewParams(isResultOnly())}${rest}`);
 }
 
 /** Shows or hides a part of the workbench. */
@@ -299,6 +327,12 @@ export function setView(change: Partial<Pick<State, 'showCode' | 'showPanel' | '
 /** Gives input on one page of a comparison to the other page too, or stops. */
 export function setMirror(on: boolean): void {
     setState({mirror: on});
+    writeAddress();
+}
+
+/** Keeps a recorded gesture, or drops it, and puts it in the address. */
+export function setGesture(gesture: Gesture | undefined): void {
+    setState({gesture});
     writeAddress();
 }
 
@@ -342,7 +376,7 @@ export async function shareLink(resultOnly = isResultOnly(), change: Partial<Lin
         };
     }
     const params = await encodeSpec({...link, ...change});
-    return `${base}#${viewParams(resultOnly, current().mirror)}${params}`;
+    return `${base}#${viewParams(resultOnly)}${params}`;
 }
 
 /**

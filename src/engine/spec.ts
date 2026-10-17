@@ -153,15 +153,24 @@ async function pipe(bytes: Uint8Array<ArrayBuffer>, stream: CompressionStream | 
     return new Uint8Array(await new Response(blob).arrayBuffer());
 }
 
-/** Packs files into the `code` parameter of a link: JSON, deflate, base64url. */
-export async function encodeFiles(files: Record<string, string>): Promise<string> {
-    const json = new TextEncoder().encode(JSON.stringify(files));
+/** Packs a value into a parameter of a link: JSON, deflate, base64url. */
+export async function pack(value: unknown): Promise<string> {
+    const json = new TextEncoder().encode(JSON.stringify(value));
     return toBase64Url(await pipe(json, new CompressionStream('deflate-raw')));
 }
 
-export async function decodeFiles(code: string): Promise<Record<string, string>> {
+export async function unpack<T>(code: string): Promise<T> {
     const json = await pipe(fromBase64Url(code), new DecompressionStream('deflate-raw'));
     return JSON.parse(new TextDecoder().decode(json));
+}
+
+/** Packs files into the `code` parameter of a link. */
+export function encodeFiles(files: Record<string, string>): Promise<string> {
+    return pack(files);
+}
+
+export function decodeFiles(code: string): Promise<Record<string, string>> {
+    return unpack(code);
 }
 
 /** The link parameters of a spec, for the fragment of the app URL. */

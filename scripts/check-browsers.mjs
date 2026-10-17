@@ -6,7 +6,7 @@
 // preview. The files start 192 pixels wide and keep their width when the code panel is made wider.
 // The address asks for input to be mirrored, in its fragment, which has to survive the redirect.
 // Mirrored, a drag on the map of the pull request has to move the map of main the same way, and
-// once the bar turns mirroring off, not at all. The icon of the panel has to count an error of the
+// once the bar turns mirroring off, not at all. A drag recorded on that side has to play on both. The icon of the panel has to count an error of the
 // console, and the bar's buttons have to say on hover what they do. Shared at the commits as
 // previews alone, the link has to name both commits, and the demo has to copy as a block for a
 // pull request.
@@ -54,7 +54,7 @@ const pages = {
     'maplibre release before 6': {url: `${site}#gh=maplibre/maplibre-gl-js@v5.0.0`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628#mirror=1`,
-        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.tip === 'Reload both' && found.mirrors && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
+        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.tip === 'Reload both' && found.mirrors && found.replays === true && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.getByRole('tab', {name: /^Console/}).click();
             await page.evaluate(() => document.querySelectorAll('iframe').forEach((frame, index) => frame.contentWindow.console.log(`side ${index}`)));
@@ -91,6 +91,22 @@ const pages = {
             const plainLink = await page.evaluate(() => !window.__livebranch.state.mirror && !location.hash.includes('mirror='));
             const alone = await dragMap();
             const mirrors = mirroredLink && plainLink && mirrored[0] === mirrored[1] && mirrored[1] !== start[1] && alone[0] === mirrored[0] && alone[1] !== mirrored[1];
+            // A drag recorded on the pull request's side alone plays on both, from a fresh start of them.
+            const replays = await (async () => {
+                await page.getByRole('button', {name: 'Record'}).click({timeout: 5000});
+                await page.waitForFunction(() => window.__livebranch.state.recording === 'on', undefined, {timeout: 60000});
+                await page.waitForFunction(() => [...document.querySelectorAll('iframe')].every(frame => frame.contentWindow.location.hash), undefined, {timeout: 30000});
+                const fresh = await cameras();
+                await dragMap();
+                await page.getByRole('button', {name: 'Stop recording'}).click();
+                await page.waitForFunction(() => location.hash.includes('gesture='), undefined, {timeout: 10000});
+                await page.getByRole('button', {name: 'Play'}).click();
+                await page.waitForFunction(() => window.__livebranch.state.playing === 'on', undefined, {timeout: 60000});
+                await page.waitForFunction(() => window.__livebranch.state.playing === false, undefined, {timeout: 60000});
+                await page.waitForTimeout(1500);
+                const played = await cameras();
+                return played[0] === played[1] && played[0] !== fresh[0] && fresh[0] === fresh[1];
+            })().catch(error => String(error).split('\n')[0]);
             // What the page copies is kept, so that this runs where the browser may not write to the clipboard.
             await page.evaluate(() => {
                 window.copied = [];
@@ -124,7 +140,7 @@ const pages = {
             }, error => String(error).split('\n')[0]);
             await page.getByRole('button', {name: 'Stop comparing'}).click();
             await page.waitForFunction(() => !location.hash.includes('base=') && document.documentElement.dataset.livebranch === 'ready', undefined, {timeout: 90000});
-            return {sides: logged.join('|'), aligned, bars, badge, tip, mirrors, shared, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+            return {sides: logged.join('|'), aligned, bars, badge, tip, mirrors, replays, shared, files: Math.round(before.files?.width), resized, alone: await page.locator('iframe').count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'commit at the head of a branch': {

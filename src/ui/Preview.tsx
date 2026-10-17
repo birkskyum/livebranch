@@ -2,14 +2,14 @@ import {useEffect, useRef, type RefObject} from 'react';
 import {useShallow} from 'zustand/react/shallow';
 import type {SessionInfo} from '../engine/protocol.ts';
 import {baseSource} from '../engine/spec.ts';
+import * as gesture from './gesture.ts';
 import {PreviewBar} from './PreviewBar.tsx';
 import {refLabel} from './RefLinks.tsx';
 import {current, setState, useStore, type ConsoleEntry} from './store.ts';
 
 const MAX_ENTRIES = 500;
 
-type Side = 'base' | 'head';
-const other = (side: Side): Side => side === 'base' ? 'head' : 'base';
+const other = (side: gesture.Side): gesture.Side => side === 'base' ? 'head' : 'base';
 
 function Frame(props: {session: SessionInfo; gh: string | undefined; labelled: boolean; frame: RefObject<HTMLIFrameElement | null>}) {
     const runs = useStore(state => state.runs);
@@ -47,8 +47,9 @@ export function Preview() {
 
     useEffect(() => {
         const frames = {base, head};
+        gesture.attach(frames);
         const receive = (event: MessageEvent) => {
-            const side: Side | undefined = event.source === base.current?.contentWindow ? 'base' : event.source === head.current?.contentWindow ? 'head' : undefined;
+            const side: gesture.Side | undefined = event.source === base.current?.contentWindow ? 'base' : event.source === head.current?.contentWindow ? 'head' : undefined;
             const data = event.data;
             if (!side) return;
             if (data?.livebranch === 'console') {
@@ -58,9 +59,12 @@ export function Preview() {
                     logged.push(entry);
                     if (logged.length > MAX_ENTRIES) logged.shift();
                 });
-            } else if (data?.livebranch === 'input' && current().mirror) {
+            } else if (data?.livebranch === 'load') {
+                gesture.pageLoaded(side);
+            } else if (data?.livebranch === 'input') {
+                gesture.input(side, data);
                 // The other page gets the same input, and its own code handles it.
-                frames[other(side)].current?.contentWindow?.postMessage(data, '*');
+                if (current().mirror) frames[other(side)].current?.contentWindow?.postMessage(data, '*');
             }
         };
         window.addEventListener('message', receive);

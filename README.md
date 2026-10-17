@@ -39,7 +39,10 @@ its cross stops comparing. A pull request that is opened by its GitHub address
 (`livebranch.dev/owner/repo/pull/123`) starts next to the default branch. Each side has its own
 console, under its preview. With Mirror input in the bar (`mirror=1` in the link), input on one
 side goes to the other too, at the same place. Each side handles it with its own code, so the same
-gesture can end up differently, which is what a change to it shows. The file list, the code and the panel below the previews are resized by dragging the lines between
+gesture can end up differently, which is what a change to it shows. Record in the bar starts the
+pages afresh and records a gesture until Stop, and the link then carries it (`gesture=`). Play
+starts them afresh again and gives every page the same input at the same times, so whoever opens
+the link sees the gesture without having to know it. The file list, the code and the panel below the previews are resized by dragging the lines between
 them, and the app keeps their sizes for the next visit.
 
 A pull request can carry its demo in its description, as a code block that is marked for this

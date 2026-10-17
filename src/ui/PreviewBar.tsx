@@ -1,4 +1,4 @@
-import {ArrowLeftRight, Check, ChevronDown, MousePointer2, RotateCw, X} from 'lucide-react';
+import {ArrowLeftRight, Check, ChevronDown, Circle, MousePointer2, Play, RotateCw, Square, X} from 'lucide-react';
 import {useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {useShallow} from 'zustand/react/shallow';
 import {Button} from '@/components/ui/button.tsx';
@@ -6,9 +6,10 @@ import {Input} from '@/components/ui/input.tsx';
 import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover.tsx';
 import {cn} from '@/lib/utils.ts';
 import {baseSource, parseGithubRef} from '../engine/spec.ts';
+import * as gesture from './gesture.ts';
 import {RefLinks} from './RefLinks.tsx';
 import {Tip} from './Tip.tsx';
-import {compareWith, defaultBranch, setMirror, setState, useStore} from './store.ts';
+import {compareWith, defaultBranch, setGesture, setMirror, setState, useStore} from './store.ts';
 
 interface Target {
     ref: string;
@@ -47,6 +48,51 @@ function BarButton(props: {label: string; onClick(): void; children: ReactNode})
             <Button variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label={props.label} onClick={props.onClick}>
                 {props.children}
             </Button>
+        </Tip>
+    );
+}
+
+/**
+ * Records a gesture and plays it on every page, from a fresh start of them. The link carries the
+ * gesture, so that whoever opens it can play it.
+ */
+function GestureButtons() {
+    const {recorded, recording, playing, comparing} = useStore(useShallow(state => ({
+        recorded: state.gesture !== undefined,
+        recording: state.recording,
+        playing: state.playing,
+        comparing: baseSource(state.spec) !== undefined,
+    })));
+    const text = 'font-sans text-muted-foreground';
+    if (recording) {
+        return (
+            <Tip text="Click Stop when the gesture is done. The link then carries it.">
+                <Button variant="ghost" size="xs" className="font-sans text-red-600 dark:text-red-400" onClick={() => void gesture.stop()}>
+                    <Square className="fill-current" />{recording === 'loading' ? 'Starting…' : 'Stop recording'}
+                </Button>
+            </Tip>
+        );
+    }
+    if (playing) {
+        return (
+            <Button variant="ghost" size="xs" className={text} onClick={gesture.cancel}>
+                <Square className="fill-current" />{playing === 'loading' ? 'Starting…' : 'Stop playing'}
+            </Button>
+        );
+    }
+    if (recorded) {
+        return (
+            <>
+                <Tip text={comparing ? 'Starts both pages afresh and gives each the recorded gesture.' : 'Starts the page afresh and gives it the recorded gesture.'}>
+                    <Button variant="ghost" size="xs" className="font-sans" onClick={gesture.play}><Play className="fill-current" />Play</Button>
+                </Tip>
+                <BarButton label="Delete the recorded gesture" onClick={() => setGesture(undefined)}><X /></BarButton>
+            </>
+        );
+    }
+    return (
+        <Tip text="Starts the pages afresh and records what you do, until you click Stop. Play then gives the same input to every page.">
+            <Button variant="ghost" size="xs" className={text} onClick={gesture.record}><Circle className="fill-red-500 text-red-500" />Record</Button>
         </Tip>
     );
 }
@@ -144,6 +190,7 @@ export function PreviewBar() {
                         </Button>
                     )
                     : <RefPicker label="Compare with another ref" trigger={<span className="flex items-center gap-1 font-sans"><ArrowLeftRight />Compare with…</span>} />)}
+                <GestureButtons />
                 {against !== undefined && (
                     <Tip text="Input on one side goes to the other too. Each handles it with its own code, so a gesture can end up differently.">
                         <Button

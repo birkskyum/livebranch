@@ -46,6 +46,7 @@ They go in the URL fragment, joined by `&`.
 | `gh=owner/repo@ref` | The project. `ref` is a branch, a tag or a commit. `owner/repo@pull/123` is the head of a pull request, also one from a fork. |
 | `base=ref` | A second ref, shown next to the first and running the same demo. A ref of the same repository (`main`) or a full `owner/repo@ref`. |
 | `mirror=1` | In a comparison, input on one side goes to the other too, at the same place, and each side handles it with its own code. |
+| `gesture=…` | A gesture recorded with Record in the app. Play starts the pages afresh and gives each the same input at the same times. |
 | `entry=path` | The page to open or the script to run. |
 | `code=...` | Files carried in the link. Make it with `POST /api/link`. |
 | `gist=id` | Files of a gist, laid over the project. `id@revision` pins it. |
