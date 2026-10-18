@@ -5,7 +5,7 @@ import {baseSource} from '../engine/spec.ts';
 import * as gesture from './gesture.ts';
 import {PreviewBar} from './PreviewBar.tsx';
 import {refLabel} from './RefLinks.tsx';
-import {current, setState, useStore, type ConsoleEntry} from './store.ts';
+import {current, setState, takeAutoplay, useStore, type ConsoleEntry} from './store.ts';
 
 const MAX_ENTRIES = 500;
 
@@ -46,6 +46,11 @@ export function Preview() {
         step: state.step,
     })));
     const comparing = baseSource(spec) !== undefined;
+    // A link from a pull request plays its gesture once both pages are up, or the one whose base did not build.
+    const autoplay = useStore(state => state.autoplay && Boolean(state.gesture && state.session && (!comparing || state.base || state.baseError)));
+    useEffect(() => {
+        if (autoplay && takeAutoplay()) gesture.playWhenLoaded();
+    }, [autoplay]);
 
     useEffect(() => {
         const frames = {base, head};

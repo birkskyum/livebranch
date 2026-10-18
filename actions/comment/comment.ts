@@ -6,14 +6,18 @@
 // it. The link and the comment are made here, from the pull request as GitHub's API gives it, and
 // that pull request has to have the commit that the pictures were taken of.
 //
+// It also puts the comparison on the pull request as a deployment, for which GitHub shows a button
+// that opens it.
+//
 // usage: node actions/comment/comment.ts [--dir livebranch-shots] [--site https://livebranch.dev/]
-// needs: GITHUB_TOKEN that may write to pull requests, and the id-token: write permission
+// needs: GITHUB_TOKEN that may write to pull requests and deployments, and the id-token: write permission
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
 import {MARKER, comment, linkOf, type Pull, type Summary} from '../shots/pull-request.ts';
 
 const AUDIENCE = 'https://livebranch.dev';
+const ENVIRONMENT = 'livebranch';
 const MAX_PICTURE_BYTES = 2_000_000;
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -92,13 +96,41 @@ async function store(summary: Summary): Promise<Partial<Record<'base' | 'head', 
     return stored;
 }
 
+/**
+ * Makes the comparison a deployment of the pull request's head, which GitHub shows on the pull
+ * request with a button that opens it. The deployments of earlier pushes of the same pull request
+ * go inactive, so that the button opens the newest. Each is transient, so that a deployment of
+ * another pull request leaves this one's be.
+ */
+async function deploy(pull: Pull, link: string): Promise<void> {
+    type Deployment = {id: number; payload: {pull?: number} | string};
+    const earlier = await github<Deployment[]>(`/repos/${repository}/deployments?environment=${ENVIRONMENT}&per_page=100`);
+    const {id} = await github<{id: number}>(`/repos/${repository}/deployments`, {method: 'POST', body: JSON.stringify({
+        ref: pull.head.sha,
+        environment: ENVIRONMENT,
+        auto_merge: false,
+        required_contexts: [],
+        transient_environment: true,
+        payload: {pull: pull.number},
+        description: `The base and #${pull.number} side by side`,
+    })});
+    // GitHub takes only short addresses as log_url, and the button opens environment_url.
+    await github(`/repos/${repository}/deployments/${id}/statuses`, {method: 'POST', body: JSON.stringify({state: 'success', environment_url: link, auto_inactive: false})});
+    for (const old of earlier) {
+        if (typeof old.payload !== 'object' || old.payload.pull !== pull.number) continue;
+        const [latest] = await github<{state: string}[]>(`/repos/${repository}/deployments/${old.id}/statuses?per_page=1`);
+        if (latest?.state !== 'inactive') await github(`/repos/${repository}/deployments/${old.id}/statuses`, {method: 'POST', body: JSON.stringify({state: 'inactive'})});
+    }
+}
+
 const pull = await pullRequest();
 if (!pull) {
     console.log('No open pull request has the commit that the pictures were taken of. A newer push takes its own.');
     process.exit(0);
 }
 const summary = checked(JSON.parse(await readFile(join(values.dir, 'summary.json'), 'utf8')), pull.head.sha);
-const body = comment(pull, await linkOf(pull, values.site), summary, await store(summary));
+const found = await linkOf(pull, values.site);
+const body = comment(pull, found, summary, await store(summary));
 
 // One comment, which each run brings up to date.
 type Comment = {id: number; body: string; user: {type: string}};
@@ -111,3 +143,8 @@ for (let page = 1; !mine; page++) {
 if (mine) await github(`/repos/${repository}/issues/comments/${mine.id}`, {method: 'PATCH', body: JSON.stringify({body})});
 else await github(`/repos/${repository}/issues/${pull.number}/comments`, {method: 'POST', body: JSON.stringify({body})});
 console.log(`${mine ? 'Updated' : 'Posted'} the pictures on #${pull.number}.`);
+// A workflow from before the button may not write deployments. Its comment is up all the same.
+await deploy(pull, found.link).then(
+    () => console.log(`Put the comparison on #${pull.number} as a deployment.`),
+    (error: unknown) => console.log(`::warning::The comparison is not on the pull request as a deployment, which needs the deployments: write permission. ${error instanceof Error ? error.message : error}`),
+);

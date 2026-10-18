@@ -9,7 +9,8 @@
 // once the bar turns mirroring off, not at all. A drag recorded on that side has to play on both. The icon of the panel has to count an error of the
 // console, and the bar's buttons have to say on hover what they do. Shared at the commits as
 // previews alone, the link has to name both commits, and the demo has to copy as a block for a
-// pull request.
+// pull request, with the recorded gesture in it. The address with play=1 plays the gesture by itself
+// once both pages are up, and drops the ask.
 // Each ref has to be named once, in the bar over its own preview, which lines up with it. The
 // comparison is stopped from that bar.
 // A commit that is opened by its hash has to say which branch it is the head of. Its build is then
@@ -71,7 +72,7 @@ const pages = {
     'maplibre release before 6': {url: `${site}#gh=maplibre/maplibre-gl-js@v5.0.0`, ok: found => found.canvas > 0},
     'pull request address': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628#mirror=1`,
-        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.tip === 'Reload both' && found.mirrors && found.replays === true && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
+        ok: found => found.canvas > 0 && found.frames === 2 && found.named === 2 && found.bars && found.sides === 'side 0|side 1' && found.aligned && found.badge === 1 && found.tip === 'Reload both' && found.mirrors && found.replays === true && found.autoplays === true && found.shared && found.files === 192 && found.resized === '80,200,100' && found.alone === 1 && found.namedAlone === 1,
         async after(page) {
             await page.getByRole('tab', {name: /^Console/}).click();
             const previews = await previewFrames(page);
@@ -125,6 +126,16 @@ const pages = {
                 const played = await cameras();
                 return played[0] === played[1] && played[0] !== fresh[0] && fresh[0] === fresh[1];
             })().catch(error => String(error).split('\n')[0]);
+            // The address now has the recorded gesture. Asked to play, it does so by itself, once.
+            const autoplays = await (async () => {
+                const arrived = await page.context().newPage();
+                await arrived.goto(`${site}#play=1&${(await page.evaluate(() => location.hash)).slice(1)}`);
+                await arrived.waitForFunction(() => window.__livebranch.state.playing === 'on', undefined, {timeout: 90000});
+                await arrived.waitForFunction(() => window.__livebranch.state.playing === false, undefined, {timeout: 60000});
+                const dropped = await arrived.evaluate(() => !location.hash.includes('play=') && location.hash.includes('gesture='));
+                await arrived.close();
+                return dropped;
+            })().catch(error => String(error).split('\n')[0]);
             // What the page copies is kept, so that this runs where the browser may not write to the clipboard.
             await page.evaluate(() => {
                 window.copied = [];
@@ -140,7 +151,7 @@ const pages = {
                 await page.waitForFunction(() => window.copied.length === 2, undefined, {timeout: 10000});
                 const [link, block] = await page.evaluate(() => window.copied);
                 await page.keyboard.press('Escape');
-                return /[#&]gh=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && /&base=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && block.includes('<details>');
+                return /[#&]gh=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && /&base=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && block.includes('<details>') && /\/pull\/8628#gesture=[\w-]+/.test(block);
             })().catch(error => String(error).split('\n')[0]);
             const drag = async (name, dx, dy) => {
                 const box = await page.getByRole('separator', {name}).boundingBox({timeout: 5000});
@@ -163,7 +174,7 @@ const pages = {
                 return !location.hash.includes('base=') && !state.spec.base && state.phase === 'ready' && state.session;
             }, undefined, {timeout: 90000});
             await page.waitForTimeout(300);
-            return {sides: logged.join('|'), aligned, bars, badge, tip, mirrors, replays, shared, files: Math.round(before.files?.width), resized, alone: await page.locator(PREVIEWS).count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
+            return {sides: logged.join('|'), aligned, bars, badge, tip, mirrors, replays, autoplays, shared, files: Math.round(before.files?.width), resized, alone: await page.locator(PREVIEWS).count(), namedAlone: await page.locator('a[title="Open on GitHub"]').count()};
         },
     },
     'commit at the head of a branch': {

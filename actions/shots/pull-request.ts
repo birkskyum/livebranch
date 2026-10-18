@@ -21,7 +21,8 @@ export const MARKER = '<!-- livebranch -->';
 
 /**
  * The link that runs the pull request next to its base, at the commits of the event, with the demo
- * of its description and the gesture of the newest livebranch link in it that has one.
+ * of its description and the gesture of the newest livebranch link in it that has one. A link with
+ * a gesture plays it as soon as it opens, and then gives the reader's input to both pages.
  */
 export async function linkOf(pull: Pull, site: string): Promise<{link: string; gesture: boolean; demo: boolean}> {
     const body = pull.body ?? '';
@@ -33,7 +34,7 @@ export async function linkOf(pull: Pull, site: string): Promise<{link: string; g
         base: `${repository}@${pull.base.sha}`,
         files: Object.keys(files).length ? files : undefined,
     });
-    return {link: `${site}#${gesture ? `gesture=${gesture}&` : ''}${pinned}`, gesture: Boolean(gesture), demo: Object.keys(files).length > 0};
+    return {link: `${site}#${gesture ? `play=1&mirror=1&gesture=${gesture}&` : ''}${pinned}`, gesture: Boolean(gesture), demo: Object.keys(files).length > 0};
 }
 
 /** Lines that repeat, once each, with how often they came. */
@@ -49,11 +50,13 @@ function counted(lines: string[]): string[] {
  */
 export function comment(pull: Pull, found: {link: string; gesture: boolean; demo: boolean}, summary: Summary, pictures: Partial<Record<'base' | 'head', string>>): string {
     const link = `[livebranch](${found.link})`;
+    const open = `**[Open the base and this pull request side by side](${found.link})** on livebranch`;
     if (summary.failure) return `${MARKER}\nlivebranch could not open this pull request.\n\n\`\`\`text\n${summary.failure.replaceAll('```', "'''")}\n\`\`\`\n\nTry it on ${link}.\n`;
-    const what = `${found.demo ? 'the demo of the description' : 'the stock demo'}${found.gesture ? ', after playing the recorded gesture' : ''}`;
+    const what = found.demo ? 'the demo of the description' : 'the stock demo';
+    const played = found.gesture ? ' It plays the recorded gesture on both, and then gives your input to both. The pictures show where each side ends up.' : '';
     const side = (name: 'base' | 'head') => summary.sides.find(item => item.name === name);
     const label = (name: 'base' | 'head') => `${name === 'base' ? pull.base.ref : `#${pull.number}`} ${(side(name)?.commit ?? '').slice(0, 7)}`.trim();
-    const picture = (name: 'base' | 'head') => pictures[name] ? `<img src="${pictures[name]}" width="420">` : 'No picture';
+    const picture = (name: 'base' | 'head') => pictures[name] ? `<img src="${pictures[name]}" width="320">` : 'No picture';
     const logged = (name: 'base' | 'head') => {
         const errors = side(name)?.errors.length ?? 0;
         return errors === 0 ? 'No errors in the console' : `${errors} ${errors === 1 ? 'error' : 'errors'} in the console`;
@@ -65,7 +68,7 @@ export function comment(pull: Pull, found: {link: string; gesture: boolean; demo
     });
     return [
         MARKER,
-        `The base and this pull request, running ${what} on ${link}.`,
+        `${open}, running ${what}.${played}`,
         '',
         `| ${label('base')} | ${label('head')} |`,
         '| --- | --- |',

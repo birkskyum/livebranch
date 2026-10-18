@@ -34,8 +34,9 @@ const summary: Summary = {head: pull.head.sha, failure: '', sides: []};
 const browser = await chromium.launch({channel: values.channel, args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist']});
 const page = await browser.newPage({viewport: {width: 1280, height: 720}});
 try {
-    // Only the previews show, so that they are as large as the window lets them be.
-    await page.goto(found.link.replace('#', '#view=result&'));
+    // Only the previews show, so that they are as large as the window lets them be. The gesture plays
+    // once the maps have settled, so the link does not play it on arrival as it does for people.
+    await page.goto(found.link.replace('#', '#view=result&').replace('play=1&', ''));
     await page.waitForFunction(() => ['ready', 'failed'].includes(document.documentElement.dataset.livebranch ?? ''), undefined, {timeout: 300_000});
     summary.failure = await page.evaluate(() => window.__livebranch.state.error);
     if (!summary.failure) {

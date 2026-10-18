@@ -42,7 +42,8 @@ side goes to the other too, at the same place. Each side handles it with its own
 gesture can end up differently, which is what a change to it shows. Record in the bar starts the
 pages afresh and records a gesture until Stop, and the link then carries it (`gesture=`). Play
 starts them afresh again and gives every page the same input at the same times, so whoever opens
-the link sees the gesture without having to know it. The file list, the code and the panel below the previews are resized by dragging the lines between
+the link sees the gesture without having to know it. With `play=1` the link plays it as soon as
+the pages are up, once, as the link of a pull request's comment does. The file list, the code and the panel below the previews are resized by dragging the lines between
 them, and the app keeps their sizes for the next visit.
 
 A pull request can carry its demo in its description, as a code block that is marked for this
@@ -188,9 +189,12 @@ a browser have no such limit.
 
 ## Pictures in pull requests
 
-Two workflows put a picture of the base and of the pull request into a comment on it, taken on
-livebranch.dev after the gesture that a livebranch link in the description recorded. Reviewers see
-how each side ends up without opening anything. The first takes the pictures without any token, as
+Two workflows put the comparison on each pull request. A comment leads with its link and shows a
+picture of the base and of the pull request, taken on livebranch.dev after the gesture that a
+livebranch link in the description recorded. The comparison is also a deployment of the pull
+request, so GitHub shows its own "View deployment" button for it. The link plays the gesture on
+both sides as it opens, and then gives the reader's input to both. Share's demo for a pull request
+has the gesture in it, so recording one and pasting the demo into the description is enough. The first takes the pictures without any token, as
 the pull request may come from a fork. The second runs after it from the default branch, stores
 the pictures on livebranch.dev with the run's OIDC token and keeps one comment up to date. It takes
 only the pictures and the lines that the pages logged from the first, and checks that the pull
@@ -224,6 +228,7 @@ on:
 permissions:
   actions: read
   pull-requests: write
+  deployments: write
   id-token: write
 jobs:
   comment:

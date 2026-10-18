@@ -8,7 +8,8 @@ type Frames = Record<Side, {current: HTMLIFrameElement | null}>;
 const PLACES: [string, 'width' | 'height'][] = [['clientX', 'width'], ['clientY', 'height']];
 
 let frames: Frames | undefined;
-let loaded = new Set<Side>();
+/** The frames whose page has loaded. A page that starts afresh gets a new frame. */
+const loaded = new WeakSet<HTMLIFrameElement>();
 let whenLoaded: (() => void) | undefined;
 let events: RecordedInput[] = [];
 let zero = 0;
@@ -24,17 +25,25 @@ function sides(): Side[] {
     return current().base ? ['base', 'head'] : ['head'];
 }
 
+/** Whether the page of every side has loaded. */
+function allLoaded(): boolean {
+    return sides().every(side => {
+        const frame = frames?.[side].current;
+        return Boolean(frame && loaded.has(frame));
+    });
+}
+
 /** Starts every page afresh, and calls `then` once all of them have loaded. */
 function restart(then: () => void): void {
-    loaded = new Set();
     whenLoaded = then;
     setState(draft => { draft.runs++; });
 }
 
 /** Called for each page that has loaded. */
 export function pageLoaded(side: Side): void {
-    loaded.add(side);
-    if (whenLoaded && sides().every(other => loaded.has(other))) {
+    const frame = frames?.[side].current;
+    if (frame) loaded.add(frame);
+    if (whenLoaded && allLoaded()) {
         const then = whenLoaded;
         whenLoaded = undefined;
         then();
@@ -93,24 +102,37 @@ export async function stop(): Promise<void> {
     if (recorded.length) setGesture({events: recorded, packed: await pack(recorded)});
 }
 
-/** Starts every page afresh and gives each the recorded gesture, at the times it was recorded. */
+/** Gives each page the recorded gesture, at the times it was recorded. */
+function replay(events: RecordedInput[]): void {
+    setState({playing: 'on'});
+    for (const event of events) {
+        timers.push(setTimeout(() => {
+            for (const side of sides()) {
+                const frame = frames?.[side].current;
+                frame?.contentWindow?.postMessage({livebranch: 'input', kind: event.kind, type: event.type, init: scaled(event.init, frame, false)}, '*');
+            }
+        }, event.t));
+    }
+    timers.push(setTimeout(() => setState({playing: false}), (events.at(-1)?.t ?? 0) + 100));
+}
+
+/** Starts every page afresh and plays the recorded gesture on each. */
 export function play(): void {
     const gesture = current().gesture;
     if (!gesture) return;
     cancel();
     setState({playing: 'loading'});
-    restart(() => {
-        setState({playing: 'on'});
-        for (const event of gesture.events) {
-            timers.push(setTimeout(() => {
-                for (const side of sides()) {
-                    const frame = frames?.[side].current;
-                    frame?.contentWindow?.postMessage({livebranch: 'input', kind: event.kind, type: event.type, init: scaled(event.init, frame, false)}, '*');
-                }
-            }, event.t));
-        }
-        timers.push(setTimeout(() => setState({playing: false}), (gesture.events.at(-1)?.t ?? 0) + 100));
-    });
+    restart(() => replay(gesture.events));
+}
+
+/** Plays the recorded gesture once the pages that are starting now have loaded, as a link may ask when it opens. */
+export function playWhenLoaded(): void {
+    const gesture = current().gesture;
+    if (!gesture) return;
+    cancel();
+    setState({playing: 'loading'});
+    if (allLoaded()) replay(gesture.events);
+    else whenLoaded = () => replay(gesture.events);
 }
 
 /** Stops a gesture that is playing. */

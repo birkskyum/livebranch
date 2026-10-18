@@ -55,6 +55,8 @@ export interface State {
     recording: false | 'loading' | 'on';
     /** Whether a gesture is playing, the same way. */
     playing: false | 'loading' | 'on';
+    /** The link asks to play its gesture as soon as the pages are up, which it does once. */
+    autoplay: boolean;
 }
 
 /**
@@ -99,6 +101,7 @@ export const useStore = create<State>()(() => ({
     gesture: undefined,
     recording: false,
     playing: false,
+    autoplay: false,
 }));
 
 /** The state now, for code outside the components. */
@@ -253,9 +256,10 @@ export async function openFromLocation(): Promise<void> {
     // A result link starts with only the preview. The code and the console are one click away.
     const resultOnly = params.get('view') === 'result';
     const mirror = params.has('mirror') && params.get('mirror') !== '0';
+    const autoplay = params.has('play') && params.get('play') !== '0';
     const packed = params.get('gesture');
     if (packed) void unpack<RecordedInput[]>(packed).then(events => { if (opening === openings) setState({gesture: {events, packed}}); }, () => {});
-    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, mirror, gesture: undefined, recording: false, playing: false, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
+    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, mirror, gesture: undefined, recording: false, playing: false, autoplay, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
     listing = undefined;
     reads.clear();
     if (isEmptySpec(spec)) {
@@ -320,7 +324,7 @@ function viewParams(resultOnly: boolean): string {
 /** Keeps the address in step with how the link shows, so that it can be copied. */
 function writeAddress(): void {
     const params = new URLSearchParams(location.hash.slice(1));
-    for (const key of ['view', 'mirror', 'gesture']) params.delete(key);
+    for (const key of ['view', 'mirror', 'gesture', 'play']) params.delete(key);
     const rest = params.toString().replaceAll('%2F', '/').replaceAll('%40', '@').replaceAll('%3A', ':');
     history.replaceState(null, '', `#${viewParams(isResultOnly())}${rest}`);
 }
@@ -335,6 +339,14 @@ export function setView(change: Partial<Pick<State, 'showCode' | 'showPanel' | '
 export function setMirror(on: boolean): void {
     setState({mirror: on});
     writeAddress();
+}
+
+/** Takes the link's ask to play on arrival, once, and drops it from the address so that a copy of it does not ask again. */
+export function takeAutoplay(): boolean {
+    if (!current().autoplay) return false;
+    setState({autoplay: false});
+    writeAddress();
+    return true;
 }
 
 /** Keeps a recorded gesture, or drops it, and puts it in the address. */
@@ -397,11 +409,13 @@ export async function demoBlock(): Promise<string> {
     const stock = state.session?.file;
     if (!Object.keys(files).length && stock) files[stock.slice(1)] = await getEngine().read(stock) ?? '';
     const {gh} = state.spec;
-    if (!gh || !isPullRequest(gh)) return demoSection(files);
+    // The pull request's pictures and its link play a gesture that a livebranch link in the description has.
+    const gesture = state.gesture ? `#gesture=${state.gesture.packed}` : '';
+    if (!gh || !isPullRequest(gh)) return demoSection(files, gesture && `The demo plays a recorded gesture at ${await shareLink(false)}`);
     const {owner, repo, ref} = parseGithubRef(gh);
     const against = state.pull?.base || state.spec.base;
-    const where = `${base}${owner}/${repo}/${ref.replace(/\/head$/, '')}`;
-    return demoSection(files, `The demo runs ${against ? `on ${against} and ` : ''}on this pull request at ${where}`);
+    const where = `${base}${owner}/${repo}/${ref.replace(/\/head$/, '')}${gesture}`;
+    return demoSection(files, `The demo runs ${against ? `on ${against} and ` : ''}on this pull request at ${where}${gesture && ', which plays the recorded gesture on both'}`);
 }
 
 const defaultBranches = new Map<string, Promise<string | undefined>>();
