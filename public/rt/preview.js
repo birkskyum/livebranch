@@ -4,6 +4,7 @@
     // WebKit loads the imports of a module worker through the service worker only for the first of
     // several workers that start at the same moment from one URL. The others fail to load. A
     // parameter of its own makes each worker's URL different, and the service worker ignores it.
+    // A blob URL has the page's origin too, but a parameter makes it name no blob.
     const NativeWorker = window.Worker;
     let workers = 0;
     window.Worker = class extends NativeWorker {
@@ -11,7 +12,7 @@
             let target = url;
             try {
                 const parsed = new URL(url, location.href);
-                if (options?.type === 'module' && parsed.origin === location.origin) {
+                if (options?.type === 'module' && parsed.origin === location.origin && parsed.protocol === location.protocol) {
                     parsed.searchParams.set('livebranch-worker', String(++workers));
                     target = parsed;
                 }
