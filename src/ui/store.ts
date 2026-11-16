@@ -8,7 +8,7 @@ import {demoSection, fetchPullRequest, type PullRequest} from '../engine/sources
 import {baseSource, decodeSpec, encodeSpec, isEmptySpec, isPullRequest, normalizeBase, parseGithubRef, unpack, type LinkSpec} from '../engine/spec.ts';
 import {openSandbox, type Sandbox} from './sandbox.ts';
 
-export type Phase = 'landing' | 'loading' | 'ready' | 'failed';
+export type Phase = 'landing' | 'loading' | 'ready' | 'failed' | 'waiting';
 export type Tab = 'problems' | 'console' | 'terminal' | 'build';
 
 export interface ConsoleEntry {
@@ -57,6 +57,8 @@ export interface State {
     playing: false | 'loading' | 'on';
     /** The link asks to play its gesture as soon as the pages are up, which it does once. */
     autoplay: boolean;
+    /** The app runs inside a frame of another site: a compact header, and a link to open it here. */
+    embed: boolean;
 }
 
 /**
@@ -102,6 +104,7 @@ export const useStore = create<State>()(() => ({
     recording: false,
     playing: false,
     autoplay: false,
+    embed: false,
 }));
 
 /** The state now, for code outside the components. */
@@ -247,6 +250,15 @@ async function readPull(spec: LinkSpec): Promise<{pull?: PullRequest; problem?: 
 /** Counts calls of `openFromLocation`. A call that is no longer the latest drops its result. */
 let openings = 0;
 
+/** Whether the reader has asked a link that waits for a click to run. */
+let clicked = false;
+
+/** Runs a link that waits for a click (`run=click`). */
+export function runOnClick(): void {
+    clicked = true;
+    void openFromLocation();
+}
+
 /** Opens the project that the page URL names, or shows the landing page when it names none. */
 export async function openFromLocation(): Promise<void> {
     const opening = ++openings;
@@ -257,13 +269,22 @@ export async function openFromLocation(): Promise<void> {
     const resultOnly = params.get('view') === 'result';
     const mirror = params.has('mirror') && params.get('mirror') !== '0';
     const autoplay = params.has('play') && params.get('play') !== '0';
+    const embed = params.has('embed') && params.get('embed') !== '0';
+    // A file that the link names opens first, instead of the page or the app.
+    const file = params.get('file') ? `/${params.get('file')!.replace(/^\/+/, '')}` : undefined;
     const packed = params.get('gesture');
     if (packed) void unpack<RecordedInput[]>(packed).then(events => { if (opening === openings) setState({gesture: {events, packed}}); }, () => {});
-    setState({spec, showCode: !resultOnly, showPanel: !resultOnly, mirror, gesture: undefined, recording: false, playing: false, autoplay, edits: {}, file: undefined, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
+    // An embed starts without the panel, as a frame on another page has little height.
+    setState({spec, showCode: !resultOnly, showPanel: !resultOnly && !embed, mirror, gesture: undefined, recording: false, playing: false, autoplay, embed, edits: {}, file, session: undefined, base: undefined, baseError: '', pull: undefined, pullProblem: '', error: ''});
     listing = undefined;
     reads.clear();
     if (isEmptySpec(spec)) {
         setState({phase: 'landing'});
+        return;
+    }
+    // Nothing loads before the click, not even the compiler, so that a page of embeds stays light.
+    if (params.get('run') === 'click' && !clicked) {
+        setState({phase: 'waiting'});
         return;
     }
     setState({phase: 'loading', step: 'starting'});

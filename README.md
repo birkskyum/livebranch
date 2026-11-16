@@ -121,6 +121,24 @@ any GitHub URL of a repository, a branch, a pull request, a commit or an example
 `github.com` for it. `livebranch.dev/github.com/maplibre/maplibre-gl-js/pull/8628` and
 `livebranch.dev/maplibre/maplibre-gl-js/pull/8628` both open that pull request.
 
+## Embedding
+
+Share's "Embed on a page" copies an iframe like this one, for a blog or docs. Any link works the
+same way.
+
+```html
+<iframe src="https://livebranch.dev/#embed=1&file=src/App.tsx&gh=solidjs/templates@main:solid-v2/bare" title="solidjs/templates/solid-v2/bare on livebranch" loading="lazy" allow="clipboard-write; fullscreen" style="width: 100%; height: 540px; border: 1px solid #ddd; border-radius: 8px;"></iframe>
+```
+
+With `embed=1` the header is compact and the panel starts closed. The name and Open in the
+header open the link in a tab of its own, with the edits. `file=path` opens that file first, also
+outside an embed. `run=click` loads nothing until the reader presses Run, not even the compiler,
+which suits a page with several embeds. The frame loads once it nears the view.
+
+An embed runs in a frame of another site. Chromium and WebKit keep such a frame's storage apart
+for each site that embeds it, so a build is kept per site. The hosts of links work there as on
+livebranch.dev. Firefox is not tried yet.
+
 ## Project config
 
 A project says how it runs in a `livebranch.json`, at its root or in `.github`. A project without

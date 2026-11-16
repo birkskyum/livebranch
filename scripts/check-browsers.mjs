@@ -9,7 +9,7 @@
 // once the bar turns mirroring off, not at all. A drag recorded on that side has to play on both. The icon of the panel has to count an error of the
 // console, and the bar's buttons have to say on hover what they do. Shared at the commits as
 // previews alone, the link has to name both commits, and the demo has to copy as a block for a
-// pull request, with the recorded gesture in it. The address with play=1 plays the gesture by itself
+// pull request, with the recorded gesture in it, and as an iframe to embed. The address with play=1 plays the gesture by itself
 // once both pages are up, and drops the ask.
 // Each ref has to be named once, in the bar over its own preview, which lines up with it. The
 // comparison is stopped from that bar.
@@ -21,11 +21,14 @@
 // Every preview has to run on a host of its link's own, from where it cannot reach the app.
 // Solid's template in the client mode of its Vite plugin, which has no page, has to come up with
 // the page that the plugin would make, show its app first, and count clicks.
+// The small page, embedded in a page of another site to start on a click, must load nothing before
+// the click, then run with the file that the link names open, and link to itself in the app.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
 //   site     the site to check, https://livebranch.dev/ by default
 //   browser  firefox, webkit or chromium. All three by default.
 // needs: pnpm exec playwright install firefox webkit chromium
+import {createServer} from 'node:http';
 import * as engines from 'playwright';
 
 const args = process.argv.slice(2);
@@ -150,10 +153,12 @@ const pages = {
                 await page.waitForFunction(() => /#view=result&.*@[0-9a-f]{40}/.test(document.querySelector('input[aria-label="Link"]')?.value), undefined, {timeout: 10000});
                 await page.getByRole('button', {name: 'Copy', exact: true}).click();
                 await page.getByRole('button', {name: 'Copy the demo for a pull request'}).click();
-                await page.waitForFunction(() => window.copied.length === 2, undefined, {timeout: 10000});
-                const [link, block] = await page.evaluate(() => window.copied);
+                await page.getByRole('button', {name: 'Copy the embed code'}).click();
+                await page.waitForFunction(() => window.copied.length === 3, undefined, {timeout: 10000});
+                const [link, block, embed] = await page.evaluate(() => window.copied);
                 await page.keyboard.press('Escape');
-                return /[#&]gh=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && /&base=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && block.includes('<details>') && /\/pull\/8628#gesture=[\w-]+/.test(block);
+                return /[#&]gh=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && /&base=maplibre\/maplibre-gl-js@[0-9a-f]{40}(&|$)/.test(link) && block.includes('<details>') && /\/pull\/8628#gesture=[\w-]+/.test(block)
+                    && embed.startsWith('<iframe src="') && embed.includes('#embed=1&amp;view=result&amp;') && embed.includes('title="maplibre/maplibre-gl-js on livebranch"');
             })().catch(error => String(error).split('\n')[0]);
             const drag = async (name, dx, dy) => {
                 const box = await page.getByRole('separator', {name}).boundingBox({timeout: 5000});
@@ -203,6 +208,17 @@ const pages = {
             return {counted, title, shown: await page.evaluate(() => window.__livebranch.state.file)};
         },
     },
+    'embed on another site': {
+        embedded: true,
+        url: `${site}#embed=1&run=click&file=shape.ts&${new URL(small.url).hash.slice(1)}`,
+        ok: found => found.waited.phase === 'waiting' && found.waited.wasm === 0 && found.out === 'area 9, 2 triangles' && found.file === '/shape.ts' && found.panel === false
+            && /#.*code=/.test(found.open) && !/embed=|run=/.test(found.open),
+        after: app => app.evaluate(() => ({
+            file: window.__livebranch.state.file,
+            panel: window.__livebranch.state.showPanel,
+            open: document.querySelector('a[aria-label="Open in livebranch"]')?.getAttribute('href') ?? '',
+        })),
+    },
     'demo in the description': {
         url: `${site}maplibre/maplibre-gl-js/pull/8628`,
         ok: found => found.described.join() === 'function,function',
@@ -215,24 +231,43 @@ const pages = {
     },
 };
 
+// A page of another site, as a blog or docs embed a link. 127.0.0.1 is another site than localhost.
+const embedder = createServer((request, response) => {
+    const src = new URL(request.url, 'http://x').searchParams.get('src') ?? '';
+    response.setHeader('content-type', 'text/html; charset=utf-8');
+    response.end(`<!doctype html><title>A page with an embed</title><iframe id="embed" src="${src.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}" style="width: 1000px; height: 600px"></iframe>`);
+});
+await new Promise(resolve => embedder.listen(0, '127.0.0.1', resolve));
+const embedding = `http://127.0.0.1:${embedder.address().port}/`;
+
 let failed = false;
 for (const name of names) {
     const browser = await engines[name].launch();
-    for (const [label, {url, ok, before, after}] of Object.entries(pages)) {
+    for (const [label, {url, ok, before, after, embedded}] of Object.entries(pages)) {
         const context = await browser.newContext();
         await before?.(context);
         const page = await context.newPage();
         const errors = [];
+        const requests = [];
         page.on('pageerror', error => errors.push(String(error)));
+        page.on('request', request => requests.push(request.url()));
         let found = {};
         try {
-            await page.goto(url, {waitUntil: 'domcontentloaded'});
-            await page.waitForFunction(() => ['ready', 'failed'].includes(document.documentElement.dataset.livebranch), undefined, {timeout: 90000});
+            await page.goto(embedded ? `${embedding}?src=${encodeURIComponent(url)}` : url, {waitUntil: 'domcontentloaded'});
+            // An embed runs in a frame of another site, and waits there for a click.
+            const app = embedded ? await (await page.waitForSelector('iframe#embed')).contentFrame() : page;
+            let waited;
+            if (embedded) {
+                await app.waitForFunction(() => document.documentElement.dataset.livebranch === 'waiting', undefined, {timeout: 30000});
+                waited = {phase: 'waiting', wasm: requests.filter(request => new URL(request).pathname.endsWith('.wasm')).length};
+                await app.getByRole('button', {name: 'Run'}).click();
+            }
+            await app.waitForFunction(() => ['ready', 'failed'].includes(document.documentElement.dataset.livebranch), undefined, {timeout: 90000});
             // A comparison is up when its second build is there too, or has failed.
-            await page.waitForFunction(() => !window.__livebranch.state.spec.base || window.__livebranch.state.base || window.__livebranch.state.baseError, undefined, {timeout: 90000});
-            await page.waitForFunction(() => !window.__livebranch.state.checking, undefined, {timeout: 60000});
-            await page.waitForTimeout(3000);
-            found = await page.evaluate(() => {
+            await app.waitForFunction(() => !window.__livebranch.state.spec.base || window.__livebranch.state.base || window.__livebranch.state.baseError, undefined, {timeout: 90000});
+            await app.waitForFunction(() => !window.__livebranch.state.checking, undefined, {timeout: 60000});
+            await app.waitForTimeout(3000);
+            found = await app.evaluate(() => {
                 const {phase, error, session, typeProblems, console: logged, baseConsole} = window.__livebranch.state;
                 return {
                     phase,
@@ -243,7 +278,8 @@ for (const name of names) {
                     named: document.querySelectorAll('a[title="Open on GitHub"], [aria-label="Change the ref to compare with"]').length,
                 };
             });
-            const inside = await inPreviews(page, () => {
+            found.waited = waited;
+            const inside = await inPreviews(app, () => {
                 let reaches = true;
                 try {
                     void window.parent.document;
@@ -252,15 +288,15 @@ for (const name of names) {
                 }
                 return {out: document.querySelector('#out')?.textContent, canvas: document.querySelector('canvas')?.width, described: document.body.dataset.described, origin: location.origin, reaches};
             });
-            const app = new URL(site).origin;
+            const origin = new URL(site).origin;
             Object.assign(found, {
                 out: inside[0]?.out,
                 canvas: inside[0]?.canvas,
                 frames: inside.length,
                 described: inside.map(preview => preview?.described),
-                isolated: inside.length > 0 && inside.every(preview => preview && /^https?:\/\/p-[0-9a-f]{16}\./.test(preview.origin) && preview.origin !== app && !preview.reaches),
+                isolated: inside.length > 0 && inside.every(preview => preview && /^https?:\/\/p-[0-9a-f]{16}\./.test(preview.origin) && preview.origin !== origin && !preview.reaches),
             });
-            if (after && found.phase === 'ready') Object.assign(found, await after(page));
+            if (after && found.phase === 'ready') Object.assign(found, await after(app));
         } catch (error) {
             found = {error: String(error)};
         }
@@ -272,4 +308,5 @@ for (const name of names) {
     }
     await browser.close();
 }
+embedder.close();
 process.exitCode = failed ? 1 : 0;

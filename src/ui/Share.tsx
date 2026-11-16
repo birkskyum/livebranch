@@ -7,6 +7,7 @@ import {Label} from '@/components/ui/label.tsx';
 import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover.tsx';
 import {Switch} from '@/components/ui/switch.tsx';
 import {baseSource} from '../engine/spec.ts';
+import {embedCode, sourceName} from './embed-code.ts';
 import {describeRef} from './RefLinks.tsx';
 import {demoBlock, isCommit, isResultOnly, shareLink, useStore} from './store.ts';
 
@@ -35,8 +36,9 @@ export function Share() {
     const [open, setOpen] = useState(false);
     const [resultOnly, setResultOnly] = useState(false);
     const [pinned, setPinned] = useState(false);
+    const [click, setClick] = useState(false);
     const [link, setLink] = useState('');
-    const [copied, setCopied] = useState<'link' | 'block'>();
+    const [copied, setCopied] = useState<'link' | 'block' | 'embed'>();
     const {spec, session, compared, edits, pull} = useStore(useShallow(state => ({spec: state.spec, session: state.session, compared: state.base, edits: state.edits, pull: state.pull})));
 
     useEffect(() => {
@@ -48,8 +50,8 @@ export function Share() {
         };
     }, [open, resultOnly, pinned, spec, session, compared, edits, pull]);
 
-    const copy = async (what: 'link' | 'block') => {
-        await navigator.clipboard.writeText(what === 'link' ? link : await demoBlock());
+    const copy = async (what: 'link' | 'block' | 'embed') => {
+        await navigator.clipboard.writeText(what === 'link' ? link : what === 'embed' ? embedCode(link, `${sourceName(spec)} on livebranch`, click) : await demoBlock());
         setCopied(what);
         setTimeout(() => setCopied(undefined), 1500);
     };
@@ -89,6 +91,20 @@ export function Share() {
                     />
                 )}
                 {edited.length > 0 && <p className="text-xs text-muted-foreground">Includes your {edited.length === 1 ? 'edit' : 'edits'} to {list(edited)}.</p>}
+                <div className="flex items-center gap-3 border-t pt-3.5">
+                    <div className="flex flex-1 flex-col gap-0.5">
+                        Embed on a page
+                        <span className="text-xs text-muted-foreground">An iframe with the files, the code and the page, for docs or a blog</span>
+                    </div>
+                    <Button variant="outline" aria-label="Copy the embed code" onClick={() => void copy('embed')}>{copied === 'embed' ? 'Copied' : 'Copy'}</Button>
+                </div>
+                <Option
+                    id="share-click"
+                    label="Start on a click"
+                    detail="Nothing loads until the reader presses Run"
+                    checked={click}
+                    onChange={setClick}
+                />
                 {spec.gh && (
                     <div className="flex items-center gap-3 border-t pt-3.5">
                         <div className="flex flex-1 flex-col gap-0.5">

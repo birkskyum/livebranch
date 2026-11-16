@@ -1,5 +1,6 @@
 import {useEffect} from 'react';
 import {TooltipProvider} from '@/components/ui/tooltip.tsx';
+import {RunOnClick} from './Embed.tsx';
 import {Landing} from './Landing.tsx';
 import {Workbench} from './Workbench.tsx';
 import {current, demoBlock, edit, getEngine, openFromLocation, shareLink, useStore, type State} from './store.ts';
@@ -44,7 +45,7 @@ export function App() {
     return (
         <TooltipProvider delayDuration={400}>
             <div className="h-dvh bg-background text-sm text-foreground">
-                {phase === 'landing' ? <Landing /> : <Workbench />}
+                {phase === 'landing' ? <Landing /> : phase === 'waiting' ? <RunOnClick /> : <Workbench />}
             </div>
         </TooltipProvider>
     );

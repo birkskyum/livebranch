@@ -53,6 +53,9 @@ They go in the URL fragment, joined by `&`.
 | `gist=id` | Files of a gist, laid over the project. `id@revision` pins it. |
 | `adapter=name` | Use a named adapter. `none` turns the lookup off. |
 | `view=result` | Show only the running page, without the editor. |
+| `embed=1` | For an iframe on another page. A compact header with a link that opens the link in livebranch, and the panel closed. |
+| `file=path` | The file that the code panel opens first. |
+| `run=click` | Load nothing until the reader presses Run, as on a page with several embeds. |
 
 A link that names a branch or a pull request shows its latest push. A link that names a full commit hash never changes.
 

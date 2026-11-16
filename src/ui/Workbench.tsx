@@ -10,6 +10,7 @@ import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs.tsx
 import {cn} from '@/lib/utils.ts';
 import {baseSource, parseGithubRef} from '../engine/spec.ts';
 import {CodePanel} from './CodePanel.tsx';
+import {OpenButton, OpenFull} from './Embed.tsx';
 import {Preview} from './Preview.tsx';
 import {refLabel} from './RefLinks.tsx';
 import {Share} from './Share.tsx';
@@ -53,23 +54,25 @@ function Toggle(props: {label: string; pressed: boolean; onClick(): void; childr
 
 /**
  * The project: its repository and how its build went, with the parts of the workbench and the
- * sharing on the right. What runs, and what it is compared with, is named over the previews.
+ * sharing on the right. What runs, and what it is compared with, is named over the previews. In an
+ * embed, the name and a button open the app in a tab of its own, where the sharing is.
  */
 function Header() {
-    const {gh, label, showCode, showPanel, opened} = useStore(useShallow(state => ({
+    const {gh, label, showCode, showPanel, opened, embed} = useStore(useShallow(state => ({
         gh: state.spec.gh,
         label: state.session?.label,
         showCode: state.showCode,
         showPanel: state.showPanel,
         opened: state.session !== undefined,
+        embed: state.embed,
     })));
     const problems = useProblems();
     const logged = useLogged();
     const errors = problems.filter(problem => problem.category === 'error').length + logged.filter(entry => entry.level === 'error').length;
     const repository = gh ? parseGithubRef(gh) : undefined;
     return (
-        <header className="flex h-10 shrink-0 items-center gap-3 border-b px-3">
-            <a className="font-semibold" href="#">livebranch</a>
+        <header className={cn('flex shrink-0 items-center gap-3 border-b px-3', embed ? 'h-9' : 'h-10')}>
+            {embed ? <OpenFull className="font-semibold" label="Open in livebranch">livebranch</OpenFull> : <a className="font-semibold" href="#">livebranch</a>}
             {repository
                 ? (
                     <Tip text="The repository on GitHub">
@@ -87,12 +90,16 @@ function Header() {
                     {errors > 0 && <span className="absolute -top-1 -right-1 min-w-4 rounded-full bg-red-600 px-1 text-[10px] leading-4 font-semibold text-white">{errors}</span>}
                 </Toggle>
                 <Separator orientation="vertical" className="mx-1 h-4 self-center" />
-                {opened && <Share />}
-                <Tip text="livebranch on GitHub">
-                    <Button variant="ghost" size="icon-sm" asChild>
-                        <a href={REPOSITORY} target="_blank" rel="noreferrer" aria-label="livebranch on GitHub"><MarkGithubIcon /></a>
-                    </Button>
-                </Tip>
+                {embed ? <OpenButton /> : (
+                    <>
+                        {opened && <Share />}
+                        <Tip text="livebranch on GitHub">
+                            <Button variant="ghost" size="icon-sm" asChild>
+                                <a href={REPOSITORY} target="_blank" rel="noreferrer" aria-label="livebranch on GitHub"><MarkGithubIcon /></a>
+                            </Button>
+                        </Tip>
+                    </>
+                )}
             </div>
         </header>
     );
@@ -234,10 +241,12 @@ function Failure() {
  * the pointer, which they would otherwise keep once it is over them.
  */
 export function Workbench() {
-    const {phase, showCode, showPanel, opened} = useStore(useShallow(state => ({phase: state.phase, showCode: state.showCode, showPanel: state.showPanel, opened: state.session !== undefined})));
+    const {phase, showCode, showPanel, opened, embed} = useStore(useShallow(state => ({phase: state.phase, showCode: state.showCode, showPanel: state.showPanel, opened: state.session !== undefined, embed: state.embed})));
     const code = showCode && opened;
-    const across = useDefaultLayout({id: 'livebranch-code', panelIds: code ? ['code', 'page'] : ['page'], storage: localStorage});
-    const down = useDefaultLayout({id: 'livebranch-panel', panelIds: showPanel ? ['preview', 'panel'] : ['preview'], storage: localStorage});
+    // An embed keeps its sizes apart from the app's, as its defaults differ.
+    const kept = embed ? 'livebranch-embed' : 'livebranch';
+    const across = useDefaultLayout({id: `${kept}-code`, panelIds: code ? ['code', 'page'] : ['page'], storage: localStorage});
+    const down = useDefaultLayout({id: `${kept}-panel`, panelIds: showPanel ? ['preview', 'panel'] : ['preview'], storage: localStorage});
     return (
         <div className="flex h-full flex-col [&:has([data-separator=active])_iframe]:pointer-events-none">
             <Header />
@@ -245,7 +254,7 @@ export function Workbench() {
                 <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1" defaultLayout={across.defaultLayout} onLayoutChanged={across.onLayoutChanged}>
                     {code && (
                         <>
-                            <ResizablePanel id="code" defaultSize="50%" minSize={240}><CodePanel /></ResizablePanel>
+                            <ResizablePanel id="code" defaultSize={embed ? '55%' : '50%'} minSize={240}><CodePanel /></ResizablePanel>
                             <ResizableHandle aria-label="Width of the code" />
                         </>
                     )}

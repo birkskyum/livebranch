@@ -75,7 +75,9 @@ export function CodePanel() {
     const [files, setFiles] = useState<FileEntry[]>([]);
     const root = useMemo(() => tree(files), [files]);
     const host = useRef<HTMLDivElement>(null);
-    const layout = useDefaultLayout({id: 'livebranch-files', storage: localStorage});
+    // An embed has less width, which goes to the code first. It keeps its sizes apart from the app's.
+    const embed = useStore(state => state.embed);
+    const layout = useDefaultLayout({id: embed ? 'livebranch-embed-files' : 'livebranch-files', storage: localStorage});
     // The list's width is in pixels, which only come out right once the code panel has a width. It
     // has none for a moment after it opens.
     const [box, setBox] = useState<HTMLDivElement | null>(null);
@@ -126,7 +128,7 @@ export function CodePanel() {
         <div ref={setBox} className="h-full">
             {measured && (
                 <ResizablePanelGroup orientation="horizontal" defaultLayout={layout.defaultLayout} onLayoutChanged={layout.onLayoutChanged}>
-                    <ResizablePanel id="files" defaultSize={192} minSize={96} groupResizeBehavior="preserve-pixel-size">
+                    <ResizablePanel id="files" defaultSize={embed ? 152 : 192} minSize={96} groupResizeBehavior="preserve-pixel-size">
                         <div className="flex h-full flex-col">
                             <div className={bar}>Files</div>
                             <nav className="min-h-0 flex-1 overflow-auto py-1 font-mono text-xs" aria-label="Files">
