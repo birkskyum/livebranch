@@ -5,9 +5,11 @@ import {hash, openProject, type Env, type Project, type ScriptIo, type ScriptReq
 import type {EngineCalls, FileEntry, OpenOptions, Reply, Request, SandboxLink, SandboxReply, SandboxRequest, SessionInfo, Step} from './protocol.ts';
 import type {Shell} from './shell.ts';
 import type {LinkSpec} from './spec.ts';
+import type {SolidCompiler} from './solid.ts';
 import type {WasmModule} from './tsc.ts';
 import {isBinaryPath} from './vfs.ts';
 import tsrsWasm from '@tsrs/wasm/tsrs.wasm?url';
+import solidWasm from '@solidjs/compiler-wasm32-wasi/compiler.wasm32-wasi.wasm?url';
 
 const KEPT_BUILDS = 12;
 const SCRIPT_TIMEOUT_MS = 120_000;
@@ -34,6 +36,7 @@ let opened: {id: string; label: string; log: string; setupProblems: Problem[]; p
 let edits: Record<string, string> = {};
 let shell: Shell | undefined;
 let wasm: Promise<WasmModule> | undefined;
+let solid: Promise<SolidCompiler> | undefined;
 
 const buildCache = (id: string) => `livebranch-build-v2-${id}`;
 // Builds from before previews had hosts of their own load the runtime from the app's host, which a sandbox does not allow.
@@ -123,6 +126,12 @@ function createEnv(base: string, to: Sandbox): Env {
             wasm ??= WebAssembly.compileStreaming(fetch(tsrsWasm));
             return wasm;
         },
+        // Fetched only for a Solid project, as it is 6 MB.
+        solid() {
+            solid ??= import('./solid.ts').then(async ({loadSolidCompiler}) => loadSolidCompiler(await WebAssembly.compileStreaming(fetch(solidWasm))));
+            solid.catch(() => { solid = undefined; });
+            return solid;
+        },
         // The app's host keeps the build, and the sandbox gets a copy to serve.
         async publish(id, files) {
             const cache = await caches.open(buildCache(id));
@@ -211,7 +220,7 @@ async function buildAndPublish(steps: Step[], start: number): Promise<SessionInf
         gh: current.spec.gh,
         commit: current.commit,
         entry: result.entry,
-        file: current.entry,
+        file: current.shown ?? current.entry,
         problems: [...opened!.setupProblems, ...result.problems],
         steps,
         ms: 0,

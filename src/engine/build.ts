@@ -5,6 +5,7 @@ import {parseJsonc} from './project.ts';
 import {isSourcePath, resolveSpecifier, scanImports, type ResolveContext} from './resolve.ts';
 import {assetModuleCode, assetModulePath, lexerReady, rewriteModule, type AssetModule} from './rewrite.ts';
 import {sourceCost, TooLargeError, tsc, type Diagnostic, type TscOptions, type TscRun} from './tsc.ts';
+import type {SolidCompiler} from './solid.ts';
 import type {FileData} from './vfs.ts';
 
 export interface Output {
@@ -113,7 +114,16 @@ export async function loadClosure(project: Project, entries: string[], ctx: Reso
     return seen;
 }
 
-function tsconfig(project: Project, files: string[]): string {
+/**
+ * The package that a project's compiled Solid templates import their runtime from: `@solidjs/web`
+ * for Solid 2, for which the compiler is made. A project without it compiles JSX as React's.
+ */
+function solidRuntime(project: Project): string | undefined {
+    return project.versions['@solidjs/web'] === undefined ? undefined : '@solidjs/web';
+}
+
+/** `keep` leaves JSX in the output for Solid's compiler, `react` makes it calls of React's runtime. */
+function tsconfig(project: Project, files: string[], keep: 'keep' | 'react' = 'react'): string {
     const base = project.vfs.readText('/tsconfig.json');
     let jsx: unknown;
     try {
@@ -155,6 +165,7 @@ function tsconfig(project: Project, files: string[]): string {
     };
     if (base === undefined) Object.assign(compilerOptions, {target: 'es2022', strict: true, jsx: 'react-jsx'});
     else if (jsx === 'preserve' || jsx === 'react-native') compilerOptions.jsx = 'react-jsx';
+    if (keep === 'keep') compilerOptions.jsx = 'preserve';
     return JSON.stringify({
         ...(base === undefined ? {} : {extends: '../tsconfig.json'}),
         compilerOptions,
@@ -199,6 +210,16 @@ function sourceOf(emitted: string, read: Set<string>): string | undefined {
     return undefined;
 }
 
+/** The output of tsrs with its JSX compiled by Solid's compiler, or undefined after a problem, which it adds. */
+function solidModule(solid: SolidCompiler, code: string, source: string, moduleName: string, problems: Problem[]): string | undefined {
+    try {
+        return solid.compile(code, {filename: source, moduleName, generate: 'dom'});
+    } catch (error) {
+        problems.push({file: source, line: undefined, column: undefined, code: 0, category: 'error', text: `Solid's compiler: ${error instanceof Error ? error.message : String(error)}`});
+        return undefined;
+    }
+}
+
 /** The specifier as the source has it. The compiler turns a `.ts` ending into `.js`. */
 function asWritten(specifier: string, source: string): string {
     const match = /^(.*)\.([cm]?)js(x?)$/.exec(specifier);
@@ -214,7 +235,8 @@ function asWritten(specifier: string, source: string): string {
 export async function compile(project: Project, env: Env, entries: string[], progress: Progress = () => {}, keep?: Set<string>): Promise<Compiled> {
     const {vfs} = project;
     const ctx = resolveContext(project, env, keep);
-    const [module] = await Promise.all([env.wasm(), lexerReady]);
+    const runtime = env.solid && solidRuntime(project);
+    const [module, solid] = await Promise.all([env.wasm(), runtime ? env.solid!() : undefined, lexerReady]);
     const missingEntries = entries.filter(path => !vfs.isFile(path));
     const problems: Problem[] = [];
     const modules = new Map<string, string>();
@@ -232,7 +254,7 @@ export async function compile(project: Project, env: Env, entries: string[], pro
         const files = [...closure].filter(path => isSourcePath(path) && vfs.isFile(path));
         progress('compile', `${files.length} modules`);
         const options: TscOptions = {
-            extra: new Map([[TSCONFIG, tsconfig(project, files)]]),
+            extra: new Map([[TSCONFIG, tsconfig(project, files, solid ? 'keep' : 'react')]]),
             json: true,
             visible: path => !isSourcePath(path) || closure.has(path),
             budget: env.sourceBudget,
@@ -254,7 +276,9 @@ export async function compile(project: Project, env: Env, entries: string[], pro
         for (const [emitted, code] of run.written) {
             const source = emitted.startsWith(`${OUT}/`) ? sourceOf(emitted, run.read) : undefined;
             if (!source) continue;
-            const rewritten = rewriteModule(code, source, ctx);
+            const compiled = solid && emitted.endsWith('.jsx') ? solidModule(solid, code, source, runtime as string, problems) : code;
+            if (compiled === undefined) continue;
+            const rewritten = rewriteModule(compiled, source, ctx);
             modules.set(source, rewritten.code);
             for (const asset of rewritten.assets) assets.set(assetModulePath(asset), asset);
             for (const path of rewritten.sources) imported.add(path);

@@ -80,11 +80,22 @@ import of the project's own package name resolves to `src/index.ts`.
    maplibre-gl-js's Unicode generator does with hundreds of files, comes from npm as one tarball
    instead, and its modules are served with the build.
 3. tsrs compiles the page's scripts and everything they import at run time, without type
-   checking. For maplibre-gl-js that is about 390 modules in under a second.
+   checking. For maplibre-gl-js that is about 390 modules in under a second. In a Solid 2
+   project tsrs keeps the JSX, and Solid's own compiler (`@solidjs/compiler`, on Oxc) turns it
+   into the DOM code that `@solidjs/web` runs, with a source map back to the file that tsrs read.
 4. Imports in the output are rewritten to the paths of their sources and to CDN URLs, and a
    service worker on the link's host serves the result from the Cache API under `~p/<build id>/`.
 5. In the background, tsrs type checks the page and the link's files against the project and
    the type declarations of its npm dependencies. The problems show up under the preview.
+
+A Solid 2 app in the client mode of `@solidjs/vite-plugin` (`solid({start: true})`) has no
+`index.html`, as the plugin makes the page at build time. livebranch makes the same page: the
+head of `src/Document.tsx` where it is plain markup, and `src/App.tsx` rendered into the body.
+The code panel then shows `src/App.tsx` first. Solid's compiler is a 5.9 MB WebAssembly module
+(1.8 MB with gzip), which a browser fetches only for a Solid project. Its own loader shares its
+memory with a pool of workers, which a page that is not cross-origin isolated may not do, so
+`src/engine/solid.ts` loads it on the engine's thread alone. The Worker and the command line do
+not load it and compile a Solid project's JSX as React's, which is enough to check it.
 
 A build is kept in the browser by a hash of its inputs. Opening the same link again takes a few
 milliseconds. The first build of a maplibre-gl-js commit takes about four seconds.
@@ -281,7 +292,15 @@ by about 1.55 times in a tab on maplibre-gl-js, compiling and type checking, wit
 for it and the same JavaScript out. In the Worker it checked zod in 4 seconds, where tsc-rs took 12
 and then ran out of resources.
 
+Solid's compiler is pinned too, to the version of `@solidjs/compiler-wasm32-wasi` in package.json.
+A Solid app gets `@solidjs/web` from esm.sh at the newest version that its package.json allows, so
+a new release of Solid can need the pin moved. The browser check opens Solid's template at a fixed
+commit and counts a click, which fails when the two no longer fit.
+
 ## Limits
+
+- Of Solid, only version 2 compiles with its own compiler. The JSX of a Solid 1 project compiles as
+  React's, which does not run.
 
 - Refs and file lists are read through GitHub's git endpoint (`src/engine/sources/git.ts`), which
   has no hourly allowance. A browser may not ask that endpoint, so the Worker does it for the page

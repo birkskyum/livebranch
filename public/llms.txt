@@ -125,7 +125,8 @@ Any headless browser can open a link. The page says how it went:
 
 - A plain TypeScript or TSX library with a `src/index.ts` works with no config.
 - A project with build steps says how it runs in a `livebranch.json`, at its root or in `.github`. A project without one gets its adapter, which is the same file kept at https://github.com/birkskyum/livebranch-adapters under the name of its npm package. That repository documents the fields.
-- A project that needs a bundler plugin or a framework compiler (Vue, Svelte, Solid JSX) does not work.
+- Solid 2 works. Its JSX compiles with Solid's own compiler, and an app in the client mode of `@solidjs/vite-plugin`, which has no `index.html`, gets the page that the plugin makes: the head of `src/Document.tsx` and `src/App.tsx` rendered into the body. `/api/check` and the command line compile its JSX as React's, which is enough to check it.
+- A project that needs another bundler plugin or framework compiler (Vue, Svelte, Solid 1) does not work.
 
 ## Limits
 

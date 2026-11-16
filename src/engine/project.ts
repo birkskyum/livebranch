@@ -4,10 +4,12 @@ import {isSourcePath} from './resolve.ts';
 import {fetchGist, githubSource, resolveSource, type Fetch, type GitReader} from './sources/github.ts';
 import {parseGithubRef, type ProjectConfig, type LinkSpec} from './spec.ts';
 import type {WasmModule} from './tsc.ts';
+import {solidClientPage} from './solid-page.ts';
+import type {SolidCompiler} from './solid.ts';
 import {Vfs, type FileData, type RemoteSource} from './vfs.ts';
 
-/** Bump when a change to the engine makes cached builds stale. */
-export const ENGINE_VERSION = 1;
+/** Bump when a change to the engine makes cached builds stale. 2: Solid's own JSX compiler. */
+export const ENGINE_VERSION = 2;
 
 /** What the engine needs from where it runs: a browser worker or Node. */
 export interface Env {
@@ -23,6 +25,12 @@ export interface Env {
     publish?(id: string, files: Map<string, {body: FileData; type: string}>): Promise<void>;
     /** Runs a compiled script in a worker with the Node shims. Only a browser has it. */
     runScript?(request: ScriptRequest, io: ScriptIo): Promise<ScriptResult>;
+    /**
+     * Solid's JSX compiler, loaded when a project first needs it. Only a browser has it, as the
+     * module takes 62 MB at least. Elsewhere a Solid project's JSX compiles as React's, which is
+     * wrong to run but enough to check.
+     */
+    solid?(): Promise<SolidCompiler>;
 }
 
 export interface ScriptIo {
@@ -62,6 +70,8 @@ export interface Project {
     config: ProjectConfig;
     /** The HTML page to open. */
     entry: string;
+    /** The file to show first where it is not the entry: the app of a page that livebranch made. */
+    shown?: string;
     /** A short name for the source, such as `owner/repo@1a2b3c4`. */
     label: string;
     /** The commit of the GitHub source. */
@@ -246,7 +256,18 @@ export async function openProject(spec: LinkSpec, env: Env, progress: Progress =
         if (name && !name.includes('node_modules/') && usable(entry?.version)) versions[name] = entry.version;
     }
 
-    const entry = pickEntry(spec, config, overlayPaths, vfs);
+    let entry: string;
+    let shown: string | undefined;
+    try {
+        entry = pickEntry(spec, config, overlayPaths, vfs);
+    } catch (error) {
+        // A Solid app in the client mode of its Vite plugin has no page, which the plugin makes.
+        const page = await solidClientPage(vfs, packageJson);
+        if (!page) throw error;
+        vfs.write('/index.html', page.html);
+        entry = '/index.html';
+        shown = page.app;
+    }
     const id = await hash([ENGINE_VERSION, commit, subdir, overlay, adapter, entry]);
-    return {spec, vfs, config, entry, label, commit, id, alias, overlay: overlayPaths, packageJson, versions};
+    return {spec, vfs, config, entry, shown, label, commit, id, alias, overlay: overlayPaths, packageJson, versions};
 }

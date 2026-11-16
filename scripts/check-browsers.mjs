@@ -19,6 +19,8 @@
 // The small page is edited after its type check, and has to build again with the edit. A release of
 // maplibre-gl-js from before version 6 has to come up clean too.
 // Every preview has to run on a host of its link's own, from where it cannot reach the app.
+// Solid's template in the client mode of its Vite plugin, which has no page, has to come up with
+// the page that the plugin would make, show its app first, and count clicks.
 //
 // usage: node scripts/check-browsers.mjs [site] [browser ...]
 //   site     the site to check, https://livebranch.dev/ by default
@@ -188,6 +190,17 @@ const pages = {
             await page.goto(`${site}#gh=maplibre/maplibre-gl-js@main`);
             await page.waitForFunction(() => window.__livebranch.state.phase === 'ready' && window.__livebranch.state.session?.cached, undefined, {timeout: 90000});
             return {...found, reused: await text()};
+        },
+    },
+    'Solid app in client mode': {
+        url: `${site}#gh=solidjs/templates@d09e110513f43f02c3ec34e8dd22ca22f9f35ebf:solid-v2/bare`,
+        ok: found => found.title === 'Solid App' && found.shown === '/src/App.tsx' && found.counted === 'Clicks: 1',
+        async after(page) {
+            const [preview] = await previewFrames(page);
+            await preview.click('button', {timeout: 10000}).catch(() => {});
+            const [counted] = await untilPreviews(page, () => document.querySelector('button')?.textContent, ([text]) => text === 'Clicks: 1', 5000);
+            const [title] = await inPreviews(page, () => document.title);
+            return {counted, title, shown: await page.evaluate(() => window.__livebranch.state.file)};
         },
     },
     'demo in the description': {
